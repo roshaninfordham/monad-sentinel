@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { cleanupExpiredDemoData, getSupabaseAdmin } from "@/lib/supabase/server";
 
 export async function GET(_: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
@@ -14,6 +14,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
     });
   }
 
+  await cleanupExpiredDemoData();
   const [devices, telemetryEvents, incidents, batches, shipments, custodyEvents] = await Promise.all([
     supabase
       .from("devices")

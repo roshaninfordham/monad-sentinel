@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { bytes32FromText } from "@monad-sentinel/shared";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { cleanupExpiredDemoData, isExpiredIso, getSupabaseAdmin } from "@/lib/supabase/server";
 
 type SessionRow = {
   id: string;
@@ -15,6 +15,8 @@ type SessionRow = {
   viewport_mode: string | null;
   delivery_status: string | null;
   created_at: string;
+  expires_at: string | null;
+  retention_minutes: number | null;
   join_token: string | null;
   dashboard_token_hash: string | null;
 };
@@ -42,6 +44,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
     });
   }
 
+  await cleanupExpiredDemoData();
   const dashboardToken = new URL(request.url).searchParams.get("d");
   const { data, error } = await supabase
     .from("sessions")
@@ -59,6 +62,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
         "viewport_mode",
         "delivery_status",
         "created_at",
+        "expires_at",
+        "retention_minutes",
         "join_token",
         "dashboard_token_hash"
       ].join(",")
@@ -67,6 +72,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
   const row = data as unknown as SessionRow;
+  if (isExpiredIso(row.expires_at)) {
+    await cleanupExpiredDemoData({ force: true });
+    return NextResponse.json({ error: "SESSION_EXPIRED", retentionMinutes: row.retention_minutes ?? 30 }, { status: 410 });
+  }
   const canRevealJoinToken =
     !!dashboardToken && !!row.dashboard_token_hash && (await sha256(dashboardToken)) === row.dashboard_token_hash;
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { bytes32FromText, deriveShipmentCommitment } from "@monad-sentinel/shared";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { cleanupExpiredDemoData, demoExpiresAt, demoRetentionMinutes, getSupabaseAdmin } from "@/lib/supabase/server";
 
 function randomId(prefix = "") {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
@@ -25,8 +25,11 @@ export async function POST(request: Request) {
   const viewportMode = body.viewportMode ?? body.mode ?? "indoor";
   const useCase = body.useCase ?? "pharma";
   const supabase = getSupabaseAdmin();
+  const retentionMinutes = demoRetentionMinutes();
+  const expiresAt = demoExpiresAt();
 
   if (supabase) {
+    await cleanupExpiredDemoData();
     const { error } = await supabase.from("sessions").insert({
       id: sessionId,
       label,
@@ -39,6 +42,8 @@ export async function POST(request: Request) {
       join_token: joinToken,
       join_token_hash: await sha256(joinToken),
       dashboard_token_hash: await sha256(dashboardToken),
+      retention_minutes: retentionMinutes,
+      expires_at: expiresAt,
       active: true,
       viewport_mode: viewportMode
     });
@@ -84,6 +89,8 @@ export async function POST(request: Request) {
       shipmentCommitment,
       routePolicyCommitment,
       destinationCommitment,
+      retentionMinutes,
+      expiresAt,
       active: true,
       simulatedPersistence: !supabase
     },

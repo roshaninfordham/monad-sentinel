@@ -17,7 +17,8 @@
     "sentinel:launch": "tsx scripts/sentinel.ts launch",
     "sentinel:ship": "tsx scripts/sentinel.ts ship",
     "sentinel:reset": "tsx scripts/sentinel.ts reset",
-    "sentinel:verify": "tsx scripts/sentinel.ts verify"
+    "sentinel:verify": "tsx scripts/sentinel.ts verify",
+    "sentinel:doctor": "tsx scripts/sentinel.ts doctor"
   },
   "devDependencies": {
     "@types/qrcode-terminal": "^0.12.2",

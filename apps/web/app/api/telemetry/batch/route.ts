@@ -14,7 +14,7 @@ import {
   TelemetryView
 } from "@monad-sentinel/shared";
 import { encryptPrivateEvidence } from "@/lib/evidence/privateEvidence";
-import { getSupabaseAdmin, broadcastRealtime } from "@/lib/supabase/server";
+import { getSupabaseAdmin, broadcastRealtime, cleanupExpiredDemoData, isExpiredIso } from "@/lib/supabase/server";
 
 function deviceAlias(deviceId: string) {
   const digits = deviceId.replace(/\D/g, "").slice(-3);
@@ -52,16 +52,31 @@ export async function POST(request: Request) {
     join_token?: string | null;
     contract_session_id?: string | null;
     shipment_commitment?: Hex | null;
+    active?: boolean | null;
+    expires_at?: string | null;
+    retention_minutes?: number | null;
   } | null = null;
 
   if (supabase) {
+    await cleanupExpiredDemoData();
     const { data, error } = await supabase
       .from("sessions")
-      .select("join_token_hash,join_token,contract_session_id,shipment_commitment")
+      .select("join_token_hash,join_token,contract_session_id,shipment_commitment,active,expires_at,retention_minutes")
       .eq("id", parsed.data.sessionId)
       .single();
     if (error) return NextResponse.json({ error: "SESSION_NOT_FOUND" }, { status: 404 });
     sessionRecord = data;
+    if (sessionRecord?.active === false || isExpiredIso(sessionRecord?.expires_at)) {
+      await cleanupExpiredDemoData({ force: true });
+      return NextResponse.json(
+        {
+          error: "SESSION_EXPIRED",
+          message: "This demo session expired. Demo sensor data is deleted after the retention window.",
+          retentionMinutes: sessionRecord?.retention_minutes ?? 30
+        },
+        { status: 410 }
+      );
+    }
     const token = parsed.data.joinToken ?? parsed.data.events[0]?.joinToken;
     if (sessionRecord?.join_token_hash && (!token || (await sha256(token)) !== sessionRecord.join_token_hash)) {
       return NextResponse.json({ error: "INVALID_JOIN_TOKEN" }, { status: 401 });

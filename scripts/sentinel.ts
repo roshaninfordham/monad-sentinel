@@ -17,6 +17,7 @@ type LaunchContext = {
 
 const command = process.argv[2] ?? "help";
 const prod = process.argv.includes("--prod");
+const realChain = process.argv.includes("--real-chain");
 
 function env(name: string) {
   return process.env[name]?.trim() ?? "";
@@ -74,13 +75,37 @@ function runCommand(cmd: string, args: string[]) {
 }
 
 async function checkEnv(requireProd: boolean) {
-  const required = requireProd
-    ? ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECRET_KEY", "MONAD_RPC_URL", "GATEWAY_PRIVATE_KEY"]
-    : [];
+  const required = requireProd ? ["NEXT_PUBLIC_SUPABASE_URL"] : [];
+  if (realChain) required.push("MONAD_RPC_URL", "GATEWAY_PRIVATE_KEY", "NEXT_PUBLIC_CONTRACT_ADDRESS");
   const missing = required.filter((name) => !env(name));
+  if (requireProd && !env("SUPABASE_SECRET_KEY") && !env("SUPABASE_SERVICE_ROLE_KEY")) {
+    missing.push("SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY");
+  }
   if (missing.length) {
     throw new Error(`Missing required env vars for prod launch: ${missing.join(", ")}`);
   }
+}
+
+async function checkRpcBlockNumber() {
+  const rpcUrl = env("MONAD_RPC_URL");
+  if (!rpcUrl) throw new Error("MONAD_RPC_URL is not configured");
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] })
+  });
+  const body = (await response.json()) as { result?: string; error?: { message?: string } };
+  if (!response.ok || !body.result) {
+    throw new Error(body.error?.message ?? `RPC blockNumber failed with HTTP ${response.status}`);
+  }
+  return Number.parseInt(body.result, 16);
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const text = await response.text();
+  if (!response.ok) throw new Error(`${url} returned ${response.status}: ${text.slice(0, 300)}`);
+  return JSON.parse(text) as T;
 }
 
 async function checkLogins(requireProd: boolean) {
@@ -154,6 +179,17 @@ function printPanel(ctx: LaunchContext) {
 
 async function launch() {
   await checkEnv(prod);
+  if (realChain) {
+    if (env("CHAIN_DISABLED") !== "false") {
+      throw new Error("--real-chain requires CHAIN_DISABLED=false");
+    }
+    for (const name of ["MONAD_RPC_URL", "GATEWAY_PRIVATE_KEY", "NEXT_PUBLIC_CONTRACT_ADDRESS"]) {
+      if (!env(name)) throw new Error(`--real-chain requires ${name}`);
+    }
+    const spinner = ora("Checking Monad RPC").start();
+    const blockNumber = await checkRpcBlockNumber();
+    spinner.succeed(`Checking Monad RPC: block ${blockNumber}`);
+  }
   await checkLogins(prod);
   await runTests();
   const deploymentUrl = await deployVercel(prod);
@@ -179,6 +215,80 @@ async function verify() {
   await runTests();
 }
 
+async function doctor() {
+  const baseUrl = appUrl().replace(/\/$/, "");
+  const checks: Array<[string, () => Promise<string>]> = [
+    [
+      "Vercel/app reachable",
+      async () => {
+        const response = await fetch(baseUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return baseUrl;
+      }
+    ],
+    [
+      "Create session and tokenized QR",
+      async () => {
+        const created = await fetchJson<{ session?: { id?: string }; joinToken?: string; dashboardToken?: string }>(`${baseUrl}/api/sessions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ label: "Sentinel Doctor", viewportMode: "indoor", useCase: "pharma" })
+        });
+        const sessionId = created.session?.id;
+        if (!sessionId || !created.joinToken || !created.dashboardToken) throw new Error("session response missing token fields");
+        const session = await fetchJson<{ joinToken?: string }>(`${baseUrl}/api/session/${sessionId}?d=${created.dashboardToken}`);
+        if (session.joinToken !== created.joinToken) throw new Error("dashboard token did not reveal join token");
+        return `${baseUrl}/dashboard/${sessionId}?d=${created.dashboardToken}`;
+      }
+    ],
+    [
+      "Supabase env present",
+      async () => {
+        if (!env("NEXT_PUBLIC_SUPABASE_URL")) throw new Error("NEXT_PUBLIC_SUPABASE_URL missing");
+        if (!env("SUPABASE_SECRET_KEY") && !env("SUPABASE_SERVICE_ROLE_KEY")) throw new Error("Supabase server key missing");
+        return "configured";
+      }
+    ]
+  ];
+
+  if (realChain || env("CHAIN_DISABLED") === "false") {
+    checks.push(
+      [
+        "Monad RPC block number",
+        async () => {
+          const block = await checkRpcBlockNumber();
+          return String(block);
+        }
+      ],
+      [
+        "Real chain env",
+        async () => {
+          for (const name of ["NEXT_PUBLIC_CONTRACT_ADDRESS", "GATEWAY_PRIVATE_KEY"]) {
+            if (!env(name)) throw new Error(`${name} missing`);
+          }
+          return env("NEXT_PUBLIC_CONTRACT_ADDRESS");
+        }
+      ]
+    );
+  } else {
+    checks.push([
+      "Chain mode",
+      async () => "simulated; explorer links must be disabled"
+    ]);
+  }
+
+  for (const [label, check] of checks) {
+    const spinner = ora(label).start();
+    try {
+      const detail = await check();
+      spinner.succeed(`${label}: ${detail}`);
+    } catch (error) {
+      spinner.fail(label);
+      throw error;
+    }
+  }
+}
+
 async function init() {
   console.log(chalk.cyan("Install and configure once:"));
   console.log("  pnpm install");
@@ -195,10 +305,11 @@ async function reset() {
 async function main() {
   if (command === "launch" || command === "ship") return launch();
   if (command === "verify") return verify();
+  if (command === "doctor") return doctor();
   if (command === "dev") return dev();
   if (command === "init") return init();
   if (command === "reset") return reset();
-  console.log("Usage: pnpm sentinel:<init|dev|launch|ship|reset|verify> [--prod]");
+  console.log("Usage: pnpm sentinel:<init|dev|launch|ship|reset|verify|doctor> [--prod] [--real-chain]");
 }
 
 main().catch((error) => {
