@@ -9,14 +9,24 @@ export const RISK_FLAGS = {
   BATTERY_CRITICAL: 16,
   CHAIN_LAG: 32,
   HIGH_ACCURACY_LOSS: 64,
-  MANUAL_DEMO_ALERT: 128
+  MANUAL_DEMO_ALERT: 128,
+  COLD_CHAIN_EXCURSION: 256,
+  REPEATED_SHOCK: 512,
+  UNAUTHORIZED_STOP: 1024,
+  SEAL_BROKEN: 2048,
+  HEARTBEAT_LOST: 4096,
+  DELIVERY_CONFIRMED: 8192
 } as const;
+
+export const PRIVATE_EVIDENCE_DOMAIN = "MonadSentinelPrivateEvidence:v1";
 
 export type DeviceClass = "mobile" | "tablet" | "desktop" | "unknown";
 export type VerificationState = "Live" | "Signed" | "Batched" | "Committed" | "Verified";
 export type RiskState = "normal" | "suspicious" | "tamper" | "offline";
 export type RiskSeverity = "normal" | "watch" | "suspicious" | "tamper" | "critical";
 export type Hex = `0x${string}`;
+export type CustodyEventClass = "normal" | "bump" | "mishandling" | "likely_theft" | "cold_chain" | "delivery";
+export type ShipmentStatus = "planned" | "in_transit" | "at_risk" | "delivered" | "verified";
 
 export const telemetryPayloadSchema = z.object({
   version: z.literal(1),
@@ -39,6 +49,17 @@ export const telemetryPayloadSchema = z.object({
   rotationGamma: z.number().nullable().optional(),
   batteryPct: z.number().nullable().optional(),
   charging: z.boolean().nullable().optional(),
+  temperatureCx10: z.number().int().nullable().optional(),
+  humidityPct: z.number().nullable().optional(),
+  sealState: z.enum(["unknown", "sealed", "opened", "broken"]).optional(),
+  networkState: z.enum(["online", "offline", "degraded", "unknown"]).optional(),
+  shipmentCommitment: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  devicePseudonym: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  payloadSalt: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  payloadCommitment: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  ciphertextHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  previousEventHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  eventHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   deviceClass: z.enum(["mobile", "tablet", "desktop", "unknown"]),
   browserHints: z.object({
     platform: z.string().optional(),
@@ -57,7 +78,8 @@ export const signedTelemetrySchema = z.object({
   signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
   payloadHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   joinToken: z.string().optional(),
-  manualAlert: z.boolean().optional()
+  manualAlert: z.boolean().optional(),
+  scenario: z.enum(["bump", "mishandling", "theft", "cold_chain", "delivery"]).optional()
 });
 
 export type SignedTelemetry = z.infer<typeof signedTelemetrySchema>;
@@ -135,6 +157,9 @@ export type TelemetryView = {
   seq: number;
   payloadHash: Hex;
   leafHash: Hex;
+  eventHash?: Hex;
+  payloadCommitment?: Hex;
+  ciphertextHash?: Hex;
   riskScore: number;
   riskFlags: number;
   riskReason: string;
@@ -151,6 +176,62 @@ export type BatchView = {
   txHash?: Hex;
   status: "pending" | "submitted" | "committed" | "verified" | "failed";
   simulated: boolean;
+};
+
+export type PrivateEvidenceEnvelope = {
+  version: 1;
+  algorithm: "AES-256-GCM";
+  iv: Hex;
+  ciphertext: Hex;
+  ciphertextHash: Hex;
+  associatedData: string;
+};
+
+export type EventCommitmentInput = {
+  shipmentCommitment: Hex;
+  devicePseudonym: Hex;
+  seq: number;
+  timestamp: number;
+  payloadCommitment: Hex;
+  ciphertextHash: Hex;
+  previousEventHash: Hex;
+};
+
+export type RiskSignals = {
+  shockEnergy?: number;
+  jerkPeak?: number;
+  orientationChangeDeg?: number;
+  routeDeviationM?: number;
+  unauthorizedStopSeconds?: number;
+  sealBroken?: boolean;
+  heartbeatLost?: boolean;
+  temperatureCx10?: number | null;
+  exposureDegreeMinutes?: number;
+  receiverSignatureMissing?: boolean;
+  manualTheft?: boolean;
+};
+
+export type Shipment = {
+  id: string;
+  shipmentCommitment: Hex;
+  productType: "pharma" | "medical_device" | "food" | "fmcg" | "luxury";
+  status: ShipmentStatus;
+  originGeofenceId: string;
+  destinationGeofenceId: string;
+  routePolicyCommitment: Hex;
+  destinationCommitment: Hex;
+  createdAt: string;
+};
+
+export type StopSegment = {
+  startTime: number;
+  endTime: number;
+  durationSeconds: number;
+  centroidLat: number;
+  centroidLng: number;
+  authorized: boolean;
+  evidenceBatchStart?: number;
+  evidenceBatchEnd?: number;
 };
 
 export type RealtimeEvent =
@@ -182,6 +263,14 @@ export function hashPayload(payload: TelemetryPayload): `0x${string}` {
   return keccak256(stringToHex(canonicalJson(payload)));
 }
 
+export function saltedCommitment(salt: Hex, value: unknown): Hex {
+  return keccak256(`${salt}${stringToHex(canonicalJson(value)).slice(2)}` as Hex);
+}
+
+export function hashCiphertext(ciphertext: Hex): Hex {
+  return keccak256(ciphertext);
+}
+
 export const telemetryTypedDataTypes = {
   Telemetry: [
     { name: "sessionId", type: "bytes32" },
@@ -194,6 +283,47 @@ export const telemetryTypedDataTypes = {
 
 export function bytes32FromText(value: string): Hex {
   return keccak256(stringToHex(value));
+}
+
+export function deriveShipmentCommitment(shipmentSecret: string, shipmentId: string): Hex {
+  return bytes32FromText(`${shipmentSecret}:${shipmentId}`);
+}
+
+export function deriveDevicePseudonym(shipmentSecret: string, devicePublicKeyOrAddress: string): Hex {
+  return bytes32FromText(`${shipmentSecret}:${devicePublicKeyOrAddress.toLowerCase()}`);
+}
+
+export function buildEventHash(input: EventCommitmentInput): Hex {
+  return keccak256(
+    encodePacked(
+      ["bytes32", "bytes32", "bytes32", "uint64", "uint256", "bytes32", "bytes32", "bytes32"],
+      [
+        bytes32FromText(PRIVATE_EVIDENCE_DOMAIN),
+        input.shipmentCommitment,
+        input.devicePseudonym,
+        BigInt(input.seq),
+        BigInt(input.timestamp),
+        input.payloadCommitment,
+        input.ciphertextHash,
+        input.previousEventHash
+      ]
+    )
+  );
+}
+
+export function buildRiskCommitment(input: { salt: Hex; riskScore: number; riskFlags: number; eventClass: CustodyEventClass; reason: string }): Hex {
+  return saltedCommitment(input.salt, {
+    riskScore: input.riskScore,
+    riskFlags: input.riskFlags,
+    eventClass: input.eventClass,
+    reason: input.reason
+  });
+}
+
+export function buildPrivateEvidenceLeafHash(input: { eventHash: Hex; signature: Hex; riskCommitment: Hex }): Hex {
+  return keccak256(
+    encodePacked(["bytes32", "bytes32", "bytes32"], [input.eventHash, keccak256(input.signature), input.riskCommitment])
+  );
 }
 
 export function telemetryTypedData(input: {
@@ -332,6 +462,148 @@ export function distanceMeters(a: { lat: number; lng: number }, b: { lat: number
   return 2 * earth * Math.asin(Math.sqrt(h));
 }
 
+export function accelerationMagnitude(input: { x?: number | null; y?: number | null; z?: number | null }): number {
+  const x = input.x ?? 0;
+  const y = input.y ?? 0;
+  const z = input.z ?? 0;
+  return Math.sqrt(x * x + y * y + z * z);
+}
+
+export function jerkMagnitude(previousMagnitude: number, currentMagnitude: number, deltaSeconds: number): number {
+  return Math.abs(currentMagnitude - previousMagnitude) / Math.max(deltaSeconds, 0.001);
+}
+
+export function shockEnergy(samples: Array<{ magnitude: number; dtSeconds: number }>, baseline = 9.8): number {
+  return samples.reduce((total, sample) => {
+    const excess = Math.max(0, sample.magnitude - baseline);
+    return total + excess * excess * Math.max(sample.dtSeconds, 0);
+  }, 0);
+}
+
+export function temperatureExposureDegreeMinutes(
+  readings: Array<{ temperatureCx10: number; timestampMs: number }>,
+  maxAllowedCx10: number
+): number {
+  if (readings.length < 2) return 0;
+  let exposure = 0;
+  for (let index = 1; index < readings.length; index += 1) {
+    const previous = readings[index - 1];
+    const current = readings[index];
+    const avgCx10 = (previous.temperatureCx10 + current.temperatureCx10) / 2;
+    const excessC = Math.max(0, (avgCx10 - maxAllowedCx10) / 10);
+    const minutes = Math.max(0, current.timestampMs - previous.timestampMs) / 60000;
+    exposure += excessC * minutes;
+  }
+  return exposure;
+}
+
+export function detectStopSegment(
+  points: Array<{ lat: number; lng: number; timestampMs: number }>,
+  radiusMeters = 30,
+  minDwellSeconds = 180
+): StopSegment | null {
+  if (points.length < 2) return null;
+  const centroid = points.reduce(
+    (acc, point) => ({ lat: acc.lat + point.lat / points.length, lng: acc.lng + point.lng / points.length }),
+    { lat: 0, lng: 0 }
+  );
+  const withinRadius = points.every((point) => distanceMeters(point, centroid) <= radiusMeters);
+  const durationSeconds = (points[points.length - 1].timestampMs - points[0].timestampMs) / 1000;
+  if (!withinRadius || durationSeconds < minDwellSeconds) return null;
+  return {
+    startTime: points[0].timestampMs,
+    endTime: points[points.length - 1].timestampMs,
+    durationSeconds,
+    centroidLat: centroid.lat,
+    centroidLng: centroid.lng,
+    authorized: false
+  };
+}
+
+export function classifyCustodyRisk(signals: RiskSignals): {
+  eventClass: CustodyEventClass;
+  riskScore: number;
+  riskFlags: number;
+  reason: string;
+  severity: RiskSeverity;
+} {
+  let riskScore = 0;
+  let riskFlags = 0;
+  const reasons: string[] = [];
+
+  const shock = (signals.shockEnergy ?? 0) > 120 || (signals.jerkPeak ?? 0) > 18;
+  if (shock) {
+    riskScore += 25;
+    riskFlags |= RISK_FLAGS.SHAKE_TAMPER;
+    reasons.push("shock event detected");
+  }
+  if ((signals.shockEnergy ?? 0) > 420) {
+    riskScore += 15;
+    riskFlags |= RISK_FLAGS.REPEATED_SHOCK;
+    reasons.push("repeated or high-energy shock");
+  }
+  if ((signals.orientationChangeDeg ?? 0) > 70) {
+    riskScore += 10;
+    reasons.push("large orientation change");
+  }
+  if ((signals.routeDeviationM ?? 0) > 25) {
+    riskScore += 35;
+    riskFlags |= RISK_FLAGS.GEOFENCE_EXIT;
+    reasons.push("route corridor deviation");
+  }
+  if ((signals.unauthorizedStopSeconds ?? 0) >= 180) {
+    riskScore += 35;
+    riskFlags |= RISK_FLAGS.UNAUTHORIZED_STOP;
+    reasons.push("unauthorized dwell stop");
+  }
+  if (signals.sealBroken) {
+    riskScore += 50;
+    riskFlags |= RISK_FLAGS.SEAL_BROKEN;
+    reasons.push("seal break signal");
+  }
+  if (signals.heartbeatLost) {
+    riskScore += 30;
+    riskFlags |= RISK_FLAGS.HEARTBEAT_LOST;
+    reasons.push("tracker heartbeat lost");
+  }
+  if ((signals.exposureDegreeMinutes ?? 0) > 1 || (signals.temperatureCx10 ?? -Infinity) > 80) {
+    riskScore += (signals.exposureDegreeMinutes ?? 0) > 5 ? 45 : 25;
+    riskFlags |= RISK_FLAGS.COLD_CHAIN_EXCURSION;
+    reasons.push("temperature exposure outside policy");
+  }
+  if (signals.receiverSignatureMissing) {
+    riskScore += 30;
+    reasons.push("receiver handoff signature missing");
+  }
+  if (signals.manualTheft) {
+    riskScore += 55;
+    riskFlags |= RISK_FLAGS.MANUAL_DEMO_ALERT;
+    reasons.push("presenter theft simulation");
+  }
+
+  riskScore = Math.min(100, riskScore);
+  const eventClass: CustodyEventClass =
+    riskFlags & RISK_FLAGS.COLD_CHAIN_EXCURSION
+      ? "cold_chain"
+      : riskScore >= 80 && (riskFlags & (RISK_FLAGS.GEOFENCE_EXIT | RISK_FLAGS.UNAUTHORIZED_STOP | RISK_FLAGS.SEAL_BROKEN | RISK_FLAGS.HEARTBEAT_LOST))
+        ? "likely_theft"
+        : shock && riskScore >= 45
+          ? "mishandling"
+          : shock
+            ? "bump"
+            : "normal";
+  const severity: RiskSeverity =
+    riskScore >= 90 ? "critical" : riskScore >= 80 ? "tamper" : riskScore >= 60 ? "suspicious" : riskScore >= 30 ? "watch" : "normal";
+
+  return {
+    eventClass,
+    riskScore,
+    riskFlags,
+    reason: reasons.length ? reasons.join(" + ") : "custody telemetry normal",
+    severity
+  };
+}
+
 export function scoreRisk(input: {
   payload: Partial<TelemetryPayload>;
   previous?: LiveDevice;
@@ -341,10 +613,7 @@ export function scoreRisk(input: {
   let flags = input.payload.riskFlags ?? 0;
   let score = 0;
   const reasons: string[] = [];
-  const ax = input.payload.accelX ?? 0;
-  const ay = input.payload.accelY ?? 0;
-  const az = input.payload.accelZ ?? 0;
-  const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+  const magnitude = accelerationMagnitude({ x: input.payload.accelX, y: input.payload.accelY, z: input.payload.accelZ });
 
   if (magnitude > 22) {
     flags |= RISK_FLAGS.SHAKE_TAMPER;
@@ -365,6 +634,21 @@ export function scoreRisk(input: {
     flags |= RISK_FLAGS.HIGH_ACCURACY_LOSS;
     score += 18;
     reasons.push("GPS accuracy degraded");
+  }
+  if (input.payload.temperatureCx10 !== null && input.payload.temperatureCx10 !== undefined && input.payload.temperatureCx10 > 80) {
+    flags |= RISK_FLAGS.COLD_CHAIN_EXCURSION;
+    score += 25;
+    reasons.push("temperature above cold-chain policy");
+  }
+  if (input.payload.sealState === "broken" || input.payload.sealState === "opened") {
+    flags |= RISK_FLAGS.SEAL_BROKEN;
+    score += 50;
+    reasons.push("seal state changed");
+  }
+  if (input.payload.networkState === "offline") {
+    flags |= RISK_FLAGS.HEARTBEAT_LOST;
+    score += 30;
+    reasons.push("tracker heartbeat lost");
   }
 
   if (input.payload.latE7 !== null && input.payload.lngE7 !== null && input.payload.latE7 && input.payload.lngE7) {

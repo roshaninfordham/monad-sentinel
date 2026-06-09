@@ -8,9 +8,10 @@
 - Canonical JSON serialization.
 - Payload hashing with `keccak256`.
 - EIP-712 typed data generation and signer recovery.
-- Leaf hashing for Merkle batches.
+- Private evidence commitments and leaf hashing for Merkle batches.
 - Merkle root, proof generation, and proof verification.
-- Deterministic risk scoring.
+- Deterministic risk scoring and custody event classification.
+- Motion, stop/dwell, distance, and cold-chain exposure helpers.
 - Realtime event view types.
 
 ## Protocol Sketch
@@ -20,7 +21,12 @@ flowchart LR
   Payload[TelemetryPayload] --> Canonical[canonicalJson]
   Canonical --> PayloadHash[payloadHash]
   PayloadHash --> Signature[EIP-712 signature]
-  PayloadHash --> Leaf[leafHash]
+  Payload --> Commitment[Salted payload commitment]
+  Payload --> Cipher[Encrypted payload hash]
+  Commitment --> EventHash[eventHash]
+  Cipher --> EventHash
+  Signature --> Leaf[private evidence leafHash]
+  EventHash --> Leaf
   Leaf --> Root[Merkle root]
   Root --> Monad[SentinelEvidenceLedger]
 ```
