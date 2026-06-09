@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+dist
+.env
+.env.local
+.vercel
+cache
+broadcast
+coverage
+packages/contracts/out
+packages/contracts/cache
+.agents
+.playwright-mcp
+skills-lock.json

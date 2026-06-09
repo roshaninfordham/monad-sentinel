@@ -1,0 +1,19 @@
+{
+  "name": "monad-sentinel",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.30.1",
+  "scripts": {
+    "dev": "pnpm --filter @monad-sentinel/web dev",
+    "build": "pnpm --filter @monad-sentinel/web build",
+    "lint": "pnpm --filter @monad-sentinel/web lint",
+    "test": "pnpm --filter @monad-sentinel/shared test && pnpm --filter @monad-sentinel/chain-agent test",
+    "contracts:build": "forge build --root packages/contracts",
+    "contracts:test": "forge test --root packages/contracts",
+    "contracts:deploy": "forge script script/Deploy.s.sol --root packages/contracts --rpc-url $MONAD_RPC_URL --broadcast",
+    "agent:dev": "pnpm --filter @monad-sentinel/chain-agent dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
