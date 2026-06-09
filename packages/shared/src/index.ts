@@ -21,7 +21,7 @@ export const RISK_FLAGS = {
 export const PRIVATE_EVIDENCE_DOMAIN = "MonadSentinelPrivateEvidence:v1";
 
 export type DeviceClass = "mobile" | "tablet" | "desktop" | "unknown";
-export type VerificationState = "Live" | "Signed" | "Batched" | "Committed" | "Verified";
+export type VerificationState = "Live" | "Signed" | "Batched" | "Committed" | "Local proof" | "Verified";
 export type RiskState = "normal" | "suspicious" | "tamper" | "offline";
 export type RiskSeverity = "normal" | "watch" | "suspicious" | "tamper" | "critical";
 export type Hex = `0x${string}`;
@@ -133,7 +133,7 @@ export type EvidenceBatch = {
   maxRiskScore: number;
   flags: number;
   txHash: string;
-  status: "pending" | "committed" | "verified";
+  status: "pending" | "simulated" | "committed" | "verified";
   createdAt: number;
   simulated: boolean;
 };

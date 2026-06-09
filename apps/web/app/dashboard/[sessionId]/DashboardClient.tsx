@@ -58,7 +58,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
                 maxRiskScore: Number(body.batch.maxRiskScore),
                 flags: Number(body.batch.combinedFlags ?? 0),
                 txHash: body.batch.txHash,
-                status: "verified",
+                status: batchStatusFromWire(body.batch),
                 createdAt: Date.now(),
                 simulated: Boolean(body.batch.simulated)
               });
@@ -138,7 +138,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
           maxRiskScore: Number(batch.maxRiskScore),
           flags: Number(batch.combinedFlags ?? 0),
           txHash: batch.txHash,
-          status: "verified",
+          status: batchStatusFromWire(batch),
           createdAt: Date.now(),
           simulated: Boolean(batch.simulated)
         });
@@ -189,4 +189,10 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
       </div>
     </main>
   );
+}
+
+function batchStatusFromWire(batch: { simulated?: boolean; status?: string }): "simulated" | "committed" | "verified" {
+  if (batch.simulated || batch.status === "simulated") return "simulated";
+  if (batch.status === "verified") return "verified";
+  return "committed";
 }

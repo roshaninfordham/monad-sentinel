@@ -107,7 +107,7 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
       maxRiskScore: Number(body.batch.maxRiskScore),
       flags: Number(body.batch.combinedFlags ?? 0),
       txHash: body.batch.txHash,
-      status: "verified",
+      status: body.batch.simulated || body.batch.status === "simulated" ? "simulated" : body.batch.status === "verified" ? "verified" : "committed",
       createdAt: Date.now(),
       simulated: Boolean(body.batch.simulated)
     });

@@ -175,6 +175,10 @@ export function DeviceDetailPanel({ sessionId }: { sessionId: string }) {
   ]
     .sort((a, b) => b.time - a.time)
     .slice(0, 9);
+  const verifiedOnMonad = device.verification === "Verified";
+  const verificationBadgeClass = verifiedOnMonad
+    ? "border-[rgba(37,243,132,.22)] bg-[rgba(37,243,132,.08)] text-[var(--verified-green)]"
+    : "border-[rgba(76,201,240,.24)] bg-[rgba(76,201,240,.08)] text-[var(--chain-blue)]";
 
   return (
     <section className="command-panel flex min-h-0 flex-col overflow-hidden rounded-lg p-4">
@@ -216,8 +220,8 @@ export function DeviceDetailPanel({ sessionId }: { sessionId: string }) {
                 {device.deviceClass} · seq {device.seq} · last seen {lastSeenAge} ago
               </div>
             </div>
-            <div className="flex items-center gap-1 rounded-full border border-[rgba(37,243,132,.22)] bg-[rgba(37,243,132,.08)] px-2 py-1 text-[0.67rem] text-[var(--verified-green)]">
-              <CheckCircle2 size={12} />
+            <div className={`flex items-center gap-1 rounded-full border px-2 py-1 text-[0.67rem] ${verificationBadgeClass}`}>
+              {verifiedOnMonad ? <CheckCircle2 size={12} /> : <LockKeyhole size={12} />}
               {device.verification}
             </div>
           </div>

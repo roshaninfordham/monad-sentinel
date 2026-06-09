@@ -9,6 +9,7 @@ import { useSentinelStore } from "@/lib/store/sentinelStore";
 
 export function EvidenceRail({ sessionId }: { sessionId: string }) {
   const batches = useSentinelStore((state) => state.batches);
+  const publicRealChain = process.env.NEXT_PUBLIC_CHAIN_MODE === "real" && process.env.NEXT_PUBLIC_CHAIN_DISABLED === "false";
 
   return (
     <div className="panel rounded-lg p-3">
@@ -18,7 +19,7 @@ export function EvidenceRail({ sessionId }: { sessionId: string }) {
           <div className="text-xs text-[var(--text-secondary)]">Merkle batch commitments for signed telemetry</div>
         </div>
         <div className="rounded-full border border-[rgba(76,201,240,.28)] bg-[rgba(76,201,240,.08)] px-3 py-1 text-xs text-[var(--chain-blue)]">
-          {process.env.NEXT_PUBLIC_CHAIN_DISABLED === "false" ? "Monad Testnet" : "Simulated chain"}
+          {publicRealChain ? "Monad Testnet" : "Simulated chain"}
         </div>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1">

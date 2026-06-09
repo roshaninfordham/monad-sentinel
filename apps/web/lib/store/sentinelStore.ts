@@ -577,9 +577,9 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
       maxRiskScore: Math.max(...devices.map((device) => device.riskScore), 0),
       flags: devices.reduce((acc, device) => acc | device.riskFlags, 0),
       txHash,
-      status: "verified",
+      status: "simulated",
       createdAt: Date.now(),
-      simulated: process.env.NEXT_PUBLIC_CHAIN_DISABLED !== "false"
+      simulated: true
     };
     set((state) => ({
       batches: [batch, ...state.batches.filter((item) => item.sequence !== batch.sequence)].slice(0, 10),
@@ -592,7 +592,7 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
         index === 0 ? { ...incident, txHash, batchSequence: sequence, reason: incident.reason.replace("queued", "committed") } : incident
       ),
       devices: Object.fromEntries(
-        Object.entries(state.devices).map(([id, device]) => [id, { ...device, txHash, verification: "Verified" }])
+        Object.entries(state.devices).map(([id, device]) => [id, { ...device, txHash, verification: "Local proof" }])
       )
     }));
     return batch;
@@ -612,7 +612,14 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
         ...state.demoEvents
       ].slice(0, 18),
       devices: Object.fromEntries(
-        Object.entries(state.devices).map(([id, device]) => [id, { ...device, txHash: batch.txHash, verification: "Verified" }])
+        Object.entries(state.devices).map(([id, device]) => [
+          id,
+          {
+            ...device,
+            txHash: batch.txHash,
+            verification: batch.simulated ? "Local proof" : batch.status === "verified" ? "Verified" : "Committed"
+          }
+        ])
       )
     })),
 
@@ -668,7 +675,7 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
           seq: latest?.seq ? Number(latest.seq) : existing?.seq ?? 0,
           riskScore: Number(row.latest_risk_score ?? latest?.risk_score ?? existing?.riskScore ?? 0),
           riskFlags: Number(row.latest_risk_flags ?? latest?.risk_flags ?? existing?.riskFlags ?? 0),
-          verification: row.latest_batch_sequence || row.latest_tx_hash ? "Verified" : latest ? "Signed" : existing?.verification ?? "Live",
+          verification: row.latest_batch_sequence || row.latest_tx_hash ? (process.env.NEXT_PUBLIC_CHAIN_DISABLED === "false" ? "Committed" : "Local proof") : latest ? "Signed" : existing?.verification ?? "Live",
           payloadHash: latest?.payload_hash ?? existing?.payloadHash ?? `0x${"0".repeat(64)}`,
           txHash: row.latest_tx_hash ?? latest?.tx_hash ?? existing?.txHash,
           trail: trail.length ? trail : existing?.trail ?? [{ lat, lng, t: row.last_seen_at ? new Date(row.last_seen_at).getTime() : Date.now() }]
@@ -682,9 +689,9 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
         maxRiskScore: Number(row.max_risk_score ?? 0),
         flags: Number(row.combined_flags ?? 0),
         txHash: row.tx_hash,
-        status: row.status === "pending" ? "pending" : "verified",
+        status: row.status === "verified" ? "verified" : row.status === "committed" ? "committed" : row.status === "simulated" ? "simulated" : "pending",
         createdAt: row.committed_at || row.submitted_at || row.created_at ? new Date(row.committed_at ?? row.submitted_at ?? row.created_at).getTime() : Date.now(),
-        simulated: process.env.NEXT_PUBLIC_CHAIN_DISABLED !== "false"
+        simulated: process.env.NEXT_PUBLIC_CHAIN_DISABLED !== "false" || row.status === "simulated"
       })) as EvidenceBatch[];
 
       const incidents = (snapshot.incidents ?? []).map((row) => ({

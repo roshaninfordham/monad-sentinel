@@ -12,9 +12,9 @@ export function ConfirmationProgress() {
   const batches = useSentinelStore((state) => state.batches);
   const hasDevices = devices.length > 0;
   const hasBatch = batches.length > 0;
-  const hasCommittedBatch = batches.some((batch) => batch.status === "committed" || batch.status === "verified");
+  const hasSubmittedBatch = batches.some((batch) => !batch.simulated && (batch.status === "committed" || batch.status === "verified"));
   const hasRealVerifiedRoot = batches.some((batch) => !batch.simulated && batch.status === "verified");
-  const activeIndex = hasRealVerifiedRoot ? 7 : hasCommittedBatch ? 6 : hasBatch ? 5 : hasDevices ? 3 : 0;
+  const activeIndex = hasRealVerifiedRoot ? 7 : hasSubmittedBatch ? 6 : hasBatch ? 4 : hasDevices ? 3 : 0;
   const modeLabel = batches[0]?.simulated ? "Simulated chain; local proof only" : "Observed → Signed → Encrypted → Monad root";
 
   return (
