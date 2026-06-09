@@ -136,25 +136,25 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
   return (
     <div className="presenter-actions">
       <button onClick={spawn} className="control-button border-[rgba(37,243,132,.34)] bg-[rgba(37,243,132,.12)] text-[0.78rem] text-[var(--verified-green)]">
-        <Users size={16} /> Spawn 50
+        <Users size={16} /> Spawn
       </button>
       <button onClick={movement} className="control-button border-[rgba(76,201,240,.34)] bg-[rgba(76,201,240,.12)] text-[0.78rem] text-[var(--chain-blue)]">
         <Navigation size={16} /> Move
       </button>
       <button onClick={deviation} className="control-button border-[rgba(255,59,92,.34)] bg-[rgba(255,59,92,.13)] text-[0.78rem] text-[var(--tamper-red)]">
-        <Route size={16} /> Deviation
+        <Route size={16} /> Dev
       </button>
       <button onClick={stop} className="control-button border-[rgba(37,243,132,.34)] bg-[rgba(37,243,132,.12)] text-[0.78rem] text-[var(--verified-green)]">
         <MapPin size={16} /> Stop
       </button>
       <button onClick={delivery} className="control-button border-[rgba(37,243,132,.34)] bg-[rgba(37,243,132,.12)] text-[0.78rem] text-[var(--verified-green)]">
-        <CheckCircle2 size={16} /> Deliver
+        <CheckCircle2 size={16} /> Drop
       </button>
       <button onClick={bump} className="control-button border-[rgba(76,201,240,.34)] bg-[rgba(76,201,240,.12)] text-[0.78rem] text-[var(--chain-blue)]">
         <Activity size={16} /> Bump
       </button>
       <button onClick={mishandling} className="control-button border-[rgba(255,176,32,.34)] bg-[rgba(255,176,32,.12)] text-[0.78rem] text-[var(--warning-amber)]">
-        <PackageX size={16} /> Handling
+        <PackageX size={16} /> Handle
       </button>
       <button onClick={tamper} className="control-button border-[rgba(255,59,92,.34)] bg-[rgba(255,59,92,.13)] text-[0.78rem] text-[var(--tamper-red)]">
         <ShieldAlert size={16} /> Theft
@@ -163,16 +163,16 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
         <Thermometer size={16} /> Cold
       </button>
       <button onClick={batch} className="control-button border-[rgba(131,110,249,.38)] bg-[rgba(131,110,249,.16)] text-[0.78rem] text-[var(--monad-purple-soft)]">
-        <Play size={16} /> Commit
+        <Play size={16} /> Batch
       </button>
       <button onClick={copyJoinUrl} className="control-button text-[0.78rem]">
-        <Copy size={16} /> Copy join
+        <Copy size={16} /> Copy
       </button>
       <button onClick={openLatestReceipt} disabled={!latestBatch} className="control-button text-[0.78rem] disabled:cursor-not-allowed disabled:opacity-40">
-        <ExternalLink size={16} /> Receipt
+        <ExternalLink size={16} /> Proof
       </button>
       <button onClick={openJourney} className="control-button text-[0.78rem]">
-        <Flag size={16} /> Journey
+        <Flag size={16} /> Route
       </button>
       <button onClick={reset} className="control-button text-[0.78rem]">
         <RotateCcw size={16} /> Reset
