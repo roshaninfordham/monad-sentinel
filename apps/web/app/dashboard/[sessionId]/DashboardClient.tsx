@@ -5,12 +5,11 @@ import { BackgroundGrid } from "@/components/command/BackgroundGrid";
 import { ConfirmationProgress } from "@/components/command/ConfirmationProgress";
 import { CustodyViewport } from "@/components/command/CustodyViewport";
 import { DemoControls } from "@/components/command/DemoControls";
-import { DeviceGrid } from "@/components/command/DeviceGrid";
+import { DeviceDetailPanel } from "@/components/command/DeviceDetailPanel";
 import { EvidenceRail } from "@/components/command/EvidenceRail";
 import { IncidentFeed } from "@/components/command/IncidentFeed";
 import { LiveEvidenceLog } from "@/components/command/LiveEvidenceLog";
 import { MetricsRail } from "@/components/command/MetricsRail";
-import { PrivacyShield } from "@/components/command/PrivacyShield";
 import { SessionQRCode } from "@/components/command/SessionQRCode";
 import { SoundToggle } from "@/components/command/SoundToggle";
 import { SwarmVerifiedOverlay } from "@/components/command/SwarmVerifiedOverlay";
@@ -54,6 +53,9 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
                 simulated: Boolean(body.batch.simulated)
               });
               if (useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
+            } else {
+              const batch = commitBatch();
+              if (batch && useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
             }
           })
           .catch(() => {
@@ -169,8 +171,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
             <SessionQRCode sessionId={sessionId} />
             <div className="dashboard-right-bottom">
               <IncidentFeed />
-              <PrivacyShield />
-              <DeviceGrid />
+              <DeviceDetailPanel sessionId={sessionId} />
             </div>
           </aside>
         </section>

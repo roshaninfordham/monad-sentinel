@@ -7,6 +7,8 @@ import { useSentinelStore } from "@/lib/store/sentinelStore";
 
 export function IncidentFeed() {
   const incidents = useSentinelStore((state) => state.incidents);
+  const selectedDeviceId = useSentinelStore((state) => state.demoRoute.selectedDeviceId);
+  const selectDevice = useSentinelStore((state) => state.selectDevice);
 
   return (
     <div className="panel min-h-0 flex-1 overflow-hidden rounded-lg p-4">
@@ -16,12 +18,18 @@ export function IncidentFeed() {
       <div className="space-y-3 overflow-hidden">
         <AnimatePresence initial={false}>
           {incidents.map((incident) => (
-            <motion.div
+            <motion.button
               key={incident.id}
+              type="button"
+              onClick={() => selectDevice(incident.deviceId)}
               initial={{ opacity: 0, x: 30, filter: "blur(6px)" }}
               animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
               exit={{ opacity: 0, x: 20 }}
-              className="rounded-lg border border-[rgba(255,59,92,.32)] bg-[rgba(255,59,92,.08)] p-3"
+              className={
+                selectedDeviceId === incident.deviceId
+                  ? "w-full rounded-lg border border-[rgba(37,243,132,.34)] bg-[rgba(37,243,132,.08)] p-3 text-left"
+                  : "w-full rounded-lg border border-[rgba(255,59,92,.32)] bg-[rgba(255,59,92,.08)] p-3 text-left"
+              }
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-[var(--text-primary)]">{incident.alias}</span>
@@ -34,7 +42,7 @@ export function IncidentFeed() {
                 <span className="hash">evidence {shortHash(incident.payloadHash)}</span>
                 <span className="hash">tx {shortHash(incident.txHash)}</span>
               </div>
-            </motion.div>
+            </motion.button>
           ))}
         </AnimatePresence>
         {!incidents.length && <div className="text-sm text-[var(--text-secondary)]">Awaiting custody anomaly.</div>}

@@ -22,10 +22,11 @@ export function SoundToggle() {
   return (
     <button
       onClick={toggle}
-      className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text-primary)] transition hover:border-[var(--monad-purple)]"
+      aria-label={enabled ? "Disable sound" : "Enable sound"}
+      className="inline-flex shrink-0 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--text-primary)] transition hover:border-[var(--monad-purple)]"
     >
       {enabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-      {enabled ? "Sound On" : "Enable Sound"}
+      {enabled ? "On" : "Sound"}
     </button>
   );
 }

@@ -2,9 +2,21 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import maplibregl, { Map, Marker } from "maplibre-gl";
+import maplibregl, { GeoJSONSource, Map, Marker } from "maplibre-gl";
 import { LiveDevice } from "@monad-sentinel/shared";
 import { useSentinelStore } from "@/lib/store/sentinelStore";
+
+const DEMO_ROUTE_COORDS: [number, number][] = [
+  [-73.98624, 40.74805],
+  [-73.98602, 40.74822],
+  [-73.98578, 40.7484],
+  [-73.98555, 40.74858],
+  [-73.98528, 40.74874],
+  [-73.98505, 40.74888]
+];
+const DEMO_DEVIATION_COORD: [number, number] = [-73.98518, 40.74812];
+const DEMO_CHECKPOINT_COORD: [number, number] = [-73.98574, 40.74843];
+const DEMO_DESTINATION_COORD = DEMO_ROUTE_COORDS[DEMO_ROUTE_COORDS.length - 1];
 
 const style = {
   version: 8,
@@ -14,6 +26,26 @@ const style = {
       tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
       tileSize: 256,
       attribution: "OpenStreetMap"
+    },
+    plannedRoute: {
+      type: "geojson",
+      data: lineFeature(DEMO_ROUTE_COORDS)
+    },
+    actualRoute: {
+      type: "geojson",
+      data: lineFeature([DEMO_ROUTE_COORDS[0], DEMO_ROUTE_COORDS[0]])
+    },
+    destination: {
+      type: "geojson",
+      data: pointFeature(DEMO_DESTINATION_COORD)
+    },
+    checkpoint: {
+      type: "geojson",
+      data: pointFeature(DEMO_CHECKPOINT_COORD)
+    },
+    deviation: {
+      type: "geojson",
+      data: emptyFeatureCollection()
     }
   },
   layers: [
@@ -22,6 +54,42 @@ const style = {
       type: "raster",
       source: "osm",
       paint: { "raster-brightness-min": 0.05, "raster-brightness-max": 0.45, "raster-saturation": -0.85 }
+    },
+    {
+      id: "route-corridor",
+      type: "line",
+      source: "plannedRoute",
+      paint: { "line-color": "#25F384", "line-opacity": 0.16, "line-width": 20, "line-blur": 2 }
+    },
+    {
+      id: "route-planned",
+      type: "line",
+      source: "plannedRoute",
+      paint: { "line-color": "#25F384", "line-opacity": 0.72, "line-width": 3, "line-dasharray": [1.4, 1.2] }
+    },
+    {
+      id: "route-actual",
+      type: "line",
+      source: "actualRoute",
+      paint: { "line-color": "#4CC9F0", "line-opacity": 0.9, "line-width": 4 }
+    },
+    {
+      id: "destination-halo",
+      type: "circle",
+      source: "destination",
+      paint: { "circle-radius": 24, "circle-color": "#836EF9", "circle-opacity": 0.16, "circle-stroke-color": "#A98BFF", "circle-stroke-width": 2 }
+    },
+    {
+      id: "checkpoint-dot",
+      type: "circle",
+      source: "checkpoint",
+      paint: { "circle-radius": 10, "circle-color": "#25F384", "circle-opacity": 0.26, "circle-stroke-color": "#25F384", "circle-stroke-width": 2 }
+    },
+    {
+      id: "deviation-dot",
+      type: "circle",
+      source: "deviation",
+      paint: { "circle-radius": 18, "circle-color": "#FF3B5C", "circle-opacity": 0.28, "circle-stroke-color": "#FF3B5C", "circle-stroke-width": 3 }
     }
   ]
 } as maplibregl.StyleSpecification;
@@ -40,6 +108,8 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
   const markersRef = useRef<Record<string, Marker>>({});
   const devices = useSentinelStore((state) => state.devices);
   const incidents = useSentinelStore((state) => state.incidents);
+  const demoRoute = useSentinelStore((state) => state.demoRoute);
+  const selectDevice = useSentinelStore((state) => state.selectDevice);
   const deviceList = useMemo(() => Object.values(devices), [devices]);
 
   useEffect(() => {
@@ -69,8 +139,12 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
     }
     deviceList.forEach((device) => {
       const element = document.createElement("div");
-      element.className = "relative grid size-8 place-items-center";
-      element.innerHTML = `<span style="position:absolute;width:28px;height:28px;border-radius:999px;background:${colorFor(
+      const selected = demoRoute.selectedDeviceId === device.id;
+      element.className = "relative grid size-8 place-items-center cursor-pointer";
+      element.setAttribute("role", "button");
+      element.setAttribute("aria-label", `Inspect ${device.alias}`);
+      element.addEventListener("click", () => selectDevice(device.id));
+      element.innerHTML = `<span style="position:absolute;width:${selected ? "36" : "28"}px;height:${selected ? "36" : "28"}px;border-radius:999px;border:${selected ? "1px solid #25F384" : "0"};background:${colorFor(
         device
       )};opacity:.18;animation:pulse-ring 1.6s ease-out infinite"></span><span style="width:13px;height:13px;border-radius:999px;background:${colorFor(
         device
@@ -95,7 +169,27 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
       deviceList.forEach((device) => bounds.extend([device.lng, device.lat]));
       map.fitBounds(bounds, { padding: 110, maxZoom: 16.5, duration: 900 });
     }
-  }, [deviceList]);
+  }, [demoRoute.selectedDeviceId, deviceList, selectDevice]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const updateRoute = () => {
+      const selected = demoRoute.selectedDeviceId ? devices[demoRoute.selectedDeviceId] : undefined;
+      const trailCoords = selected?.trail?.map((point) => [point.lng, point.lat] as [number, number]) ?? [];
+      const actualCoords = trailCoords.length > 1 ? trailCoords : progressCoords(demoRoute.progress, demoRoute.stage);
+      const actualSource = map.getSource("actualRoute") as GeoJSONSource | undefined;
+      const deviationSource = map.getSource("deviation") as GeoJSONSource | undefined;
+      actualSource?.setData(lineFeature(actualCoords.length > 1 ? actualCoords : [DEMO_ROUTE_COORDS[0], DEMO_ROUTE_COORDS[0]]));
+      deviationSource?.setData(demoRoute.stage === "deviation" ? pointFeature(DEMO_DEVIATION_COORD) : emptyFeatureCollection());
+    };
+
+    if (map.isStyleLoaded()) {
+      updateRoute();
+      return;
+    }
+    map.once("load", updateRoute);
+  }, [demoRoute.progress, demoRoute.selectedDeviceId, demoRoute.stage, devices]);
 
   useEffect(() => {
     const latest = incidents[0];
@@ -120,7 +214,13 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
         />
       )}
       <div className="absolute left-4 top-4 rounded-md border border-[rgba(37,243,132,.24)] bg-black/45 px-3 py-2 text-xs text-[var(--verified-green)] backdrop-blur">
-        Geo Map Mode · real GPS when available
+        Geo Map Mode · route corridor + destination geofence
+      </div>
+      <div className="absolute bottom-4 left-4 grid gap-1 rounded-md border border-white/10 bg-black/45 px-3 py-2 text-[10px] text-[var(--text-secondary)] backdrop-blur">
+        <span className="text-[var(--verified-green)]">Approved route corridor</span>
+        <span className={demoRoute.stage === "deviation" ? "text-[var(--tamper-red)]" : "text-[var(--chain-blue)]"}>
+          {demoRoute.stage === "deviation" ? "Deviation threshold breached" : "Actual trace follows approved path"}
+        </span>
       </div>
     </>
   );
@@ -134,4 +234,39 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
       {content}
     </div>
   );
+}
+
+function lineFeature(coords: [number, number][]) {
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: {
+      type: "LineString",
+      coordinates: coords
+    }
+  } as const;
+}
+
+function pointFeature(coord: [number, number]) {
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: {
+      type: "Point",
+      coordinates: coord
+    }
+  } as const;
+}
+
+function emptyFeatureCollection() {
+  return {
+    type: "FeatureCollection",
+    features: []
+  } as const;
+}
+
+function progressCoords(progress: number, stage: string): [number, number][] {
+  if (stage === "deviation") return [...DEMO_ROUTE_COORDS.slice(0, 4), DEMO_DEVIATION_COORD];
+  const count = Math.max(2, Math.ceil(Math.min(Math.max(progress, 0.12), 1) * DEMO_ROUTE_COORDS.length));
+  return DEMO_ROUTE_COORDS.slice(0, count);
 }

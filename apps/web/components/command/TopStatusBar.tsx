@@ -10,7 +10,6 @@ export function TopStatusBar({ sessionId }: { sessionId: string }) {
   const devices = useMemo(() => Object.values(devicesById), [devicesById]);
   const batches = useSentinelStore((state) => state.batches);
   const telemetryEvents = useSentinelStore((state) => state.telemetryEvents);
-  const latestTx = useSentinelStore((state) => state.latestTx);
   const eps = telemetryEvents.filter((time) => time > Date.now() - 1000).length;
   const latestBatch = batches[0];
   const alerts = devices.filter((device) => device.riskScore >= 70).length;
@@ -34,7 +33,7 @@ export function TopStatusBar({ sessionId }: { sessionId: string }) {
         <StatusPill icon={<RadioTower size={14} />} label="LIVE" value={`${devices.length} witnesses`} tone="green" />
         <StatusPill icon={<Zap size={14} />} label="STREAM" value={`${eps} eps`} tone="cyan" />
         <StatusPill icon={<Boxes size={14} />} label="BATCH" value={latestBatch ? `#${latestBatch.sequence}` : "pending"} tone="purple" />
-        <StatusPill icon={<ShieldCheck size={14} />} label="TX" value={shortHash(latestTx, 4)} tone="purple" />
+        <StatusPill icon={<ShieldCheck size={14} />} label="PROOF" value={latestBatch ? shortHash(latestBatch.merkleRoot, 4) : "pending"} tone="purple" />
         <StatusPill icon={<ShieldCheck size={14} />} label="ALERTS" value={`${alerts}`} tone={alerts ? "red" : "green"} />
       </div>
     </header>
