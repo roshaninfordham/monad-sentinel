@@ -8,7 +8,7 @@ const chainDisabled = process.env.CHAIN_DISABLED !== "false";
 const pollMs = Number(process.env.CHAIN_AGENT_POLL_MS ?? 1000);
 const maxBatchSize = Number(process.env.CHAIN_AGENT_MAX_BATCH_SIZE ?? 200);
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
 const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as Hex | undefined;
 const rpcUrl = process.env.MONAD_RPC_URL;
 const gatewayPrivateKey = process.env.GATEWAY_PRIVATE_KEY as Hex | undefined;
