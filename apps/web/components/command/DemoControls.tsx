@@ -34,6 +34,7 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
   const reset = useSentinelStore((state) => state.reset);
   const soundEnabled = useSentinelStore((state) => state.soundEnabled);
   const latestBatch = useSentinelStore((state) => state.batches[0]);
+  const allowLocalProofFallback = process.env.NEXT_PUBLIC_CHAIN_MODE !== "real" || process.env.NEXT_PUBLIC_CHAIN_DISABLED !== "false";
 
   function spawn() {
     spawnSimulatedDevices(50, sessionId);
@@ -90,12 +91,14 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
       body: JSON.stringify({ sessionId })
     }).catch(() => null);
     if (!response?.ok) {
+      if (!allowLocalProofFallback) return;
       const committed = commitBatch();
       if (committed && soundEnabled) SoundEngine.playBatchCommitted();
       return;
     }
     const body = await response.json().catch(() => null);
     if (!body?.batch) {
+      if (!allowLocalProofFallback) return;
       const committed = commitBatch();
       if (committed && soundEnabled) SoundEngine.playBatchCommitted();
       return;

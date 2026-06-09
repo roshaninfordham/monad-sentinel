@@ -24,6 +24,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
   const soundEnabled = useSentinelStore((state) => state.soundEnabled);
   const deviceCount = useSentinelStore((state) => Object.keys(state.devices).length);
   const lastAutoCommitCursor = useRef("");
+  const allowLocalProofFallback = process.env.NEXT_PUBLIC_CHAIN_MODE !== "real" || process.env.NEXT_PUBLIC_CHAIN_DISABLED !== "false";
 
   useEffect(() => {
     let inFlight = false;
@@ -63,12 +64,13 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
                 simulated: Boolean(body.batch.simulated)
               });
               if (useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
-            } else {
+            } else if (allowLocalProofFallback) {
               const batch = commitBatch();
               if (batch && useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
             }
           })
           .catch(() => {
+            if (!allowLocalProofFallback) return;
             const batch = commitBatch();
             if (batch && useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
           })
@@ -78,7 +80,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
       }
     }, 2400);
     return () => window.clearInterval(id);
-  }, [commitBatch, receiveBatch, sessionId]);
+  }, [allowLocalProofFallback, commitBatch, receiveBatch, sessionId]);
 
   useEffect(() => {
     if (soundEnabled && deviceCount) SoundEngine.playVerified();
