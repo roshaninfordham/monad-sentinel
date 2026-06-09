@@ -6,6 +6,7 @@
 - `.env.example`: all expected configuration values.
 - `pnpm-workspace.yaml`: monorepo package layout.
 - `README.md`: product overview and quick start.
+- `scripts/sentinel.ts`: one-command demo launch and verification helper.
 
 ## `apps/web`
 
@@ -82,6 +83,7 @@ Long-running worker:
 ```bash
 pnpm build
 pnpm test
+pnpm sentinel:verify
 pnpm contracts:test
 ```
 

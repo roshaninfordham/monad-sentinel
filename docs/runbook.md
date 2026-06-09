@@ -16,8 +16,31 @@ Recommended demo path:
 3. Click **Enable Sound**.
 4. Click **Spawn 50**.
 5. Click **Trigger theft**.
-6. Click **Commit batch**.
-7. Open the latest receipt from the evidence rail.
+6. Click **Cold breach** if you want a pharma/cold-chain risk.
+7. Click **Emergency batch**.
+8. Open the latest receipt from the evidence rail.
+
+## One-Command Helpers
+
+```bash
+pnpm sentinel:init
+pnpm sentinel:verify
+pnpm sentinel:launch
+pnpm sentinel:launch --prod
+pnpm sentinel:reset
+```
+
+`pnpm sentinel:launch --prod` checks env, verifies the app, deploys through Vercel, creates a session, prints dashboard/join URLs, prints a terminal QR, and opens the dashboard.
+
+First-time operator setup is still required:
+
+```bash
+vercel login
+supabase login
+cp .env.example .env.local
+```
+
+If `CHAIN_DISABLED=true`, the launch panel and dashboard should be treated as simulated chain mode.
 
 ## Real Phone Testing
 
@@ -98,7 +121,7 @@ If env vars are missing, it waits rather than crashing.
 1:05  Spawn 50 if the room is slow.
 1:20  Ask someone to shake their phone or trigger theft.
 1:25  Red ripple and incident card appear.
-1:45  Commit batch; evidence rail updates.
+1:45  Commit emergency batch; evidence rail updates.
 2:05  Open receipt and explain hash -> proof -> Monad root.
 ```
 

@@ -21,6 +21,8 @@ supabase/migrations/001_init.sql
 - `agent_actions`: audit log for proposed/executed agent actions.
 - `chain_outbox`: future queue for robust chain retries.
 
+The schema includes `use_case`, `viewport_mode`, `simulated_temperature_c_x10`, and `product_type` so the demo can speak to pharma, food, medical, and high-value freight without changing the protocol.
+
 ## Security Model
 
 - Browser clients do not write durable telemetry directly.

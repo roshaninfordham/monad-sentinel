@@ -10,7 +10,7 @@ The demo is designed to be useful even when GPS is bad, Wi-Fi is noisy, or Monad
 
 - QR-powered phone onboarding with no wallet popup and no testnet tokens for the audience.
 - Ephemeral local device keys that sign EIP-712 telemetry.
-- Realtime command center with map, evidence rail, incident feed, sound, and 50-device simulation.
+- Realtime command center with indoor command room, geo map, globe mode, evidence rail, incident feed, sound, and 50-device simulation.
 - Deterministic risk agents for shake/tamper, geofence exit, GPS jump, battery, and accuracy loss.
 - Supabase/Postgres as the app state and realtime layer.
 - Monad Testnet smart contract as the tamper-evident evidence rail.
@@ -53,7 +53,8 @@ Open `http://localhost:3000`, click **Start Live Custody Swarm**, then use the d
 
 - **Spawn 50** to fill the command center.
 - **Trigger theft** to create a tamper incident.
-- **Commit batch** to create a simulated evidence block.
+- **Cold breach** to simulate cargo temperature risk.
+- **Emergency batch** to create a simulated evidence block.
 - Open `/s/[sessionId]` on a phone to test the mobile witness flow.
 
 The app runs in local demo mode without Supabase or Monad credentials.
@@ -89,6 +90,10 @@ pnpm agent:dev         # batch worker
 pnpm contracts:build   # Foundry build, requires forge
 pnpm contracts:test    # Foundry tests, requires forge
 pnpm contracts:deploy  # deploy SentinelEvidenceLedger to Monad
+pnpm sentinel:init     # print one-time setup checklist
+pnpm sentinel:verify   # run app checks and build
+pnpm sentinel:launch   # local launch helper
+pnpm sentinel:launch --prod # Vercel launch helper with QR output
 ```
 
 ## Environment
@@ -114,6 +119,7 @@ NEXT_PUBLIC_MONAD_CHAIN_ID=10143
 NEXT_PUBLIC_MONAD_EXPLORER_URL=
 NEXT_PUBLIC_CONTRACT_ADDRESS=
 MONAD_RPC_URL=
+MONAD_WS_URL=
 GATEWAY_PRIVATE_KEY=
 CHAIN_DISABLED=false
 ```
@@ -157,3 +163,4 @@ sequenceDiagram
 - Contract tests require Foundry. `forge` was not available in the current local environment.
 - Supabase realtime is optional in local mode; without env vars, the app falls back to in-memory dashboard simulation.
 - Browser battery data is optional by design. GPS and motion also degrade gracefully when unavailable.
+- `pnpm sentinel:launch --prod` checks Vercel login and required env, but still expects first-time Vercel/Supabase/Foundry setup to be completed by the operator.

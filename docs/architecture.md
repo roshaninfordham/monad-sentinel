@@ -129,3 +129,19 @@ For hackathon reliability, run the Chain Agent locally or on a small worker host
 - Supabase unavailable: local simulation controls still demonstrate the command center.
 - Monad RPC delayed: dashboard keeps showing signed/live state and marks chain batches pending.
 - `CHAIN_DISABLED=true`: tx hashes are simulated and explicitly labeled as simulated.
+
+## Viewport Modes
+
+```mermaid
+flowchart LR
+  Indoor[Indoor Command Room<br/>default hackathon mode]
+  Geo[Geo Map<br/>MapLibre GPS mode]
+  Globe[Global Threat View<br/>route and cargo lane storytelling]
+  Dashboard[Command Center]
+
+  Dashboard --> Indoor
+  Dashboard --> Geo
+  Dashboard --> Globe
+```
+
+Indoor mode is the default because real GPS is unreliable inside event spaces.
