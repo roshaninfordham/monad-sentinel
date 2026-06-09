@@ -39,6 +39,15 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
+    fetch(`/api/session/${sessionId}/latest`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((snapshot) => {
+        if (snapshot) useSentinelStore.getState().hydrateSnapshot(snapshot);
+      })
+      .catch(() => {
+        // Realtime still works when snapshot hydration is unavailable.
+      });
+
     if (!supabase) return;
     const telemetryChannel = supabase
       .channel(`session:${sessionId}:telemetry`)

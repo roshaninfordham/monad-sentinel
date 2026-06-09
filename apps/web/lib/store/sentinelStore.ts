@@ -40,6 +40,12 @@ type SentinelState = {
   setSoundEnabled: (enabled: boolean) => void;
   setIndoorSpatialization: (enabled: boolean) => void;
   setViewportMode: (mode: "indoor" | "geo" | "globe") => void;
+  hydrateSnapshot: (snapshot: {
+    devices?: Array<Record<string, any>>;
+    telemetryEvents?: Array<Record<string, any>>;
+    incidents?: Array<Record<string, any>>;
+    batches?: Array<Record<string, any>>;
+  }) => void;
   hideSwarmOverlay: () => void;
 };
 
@@ -263,6 +269,78 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
         Object.entries(state.devices).map(([id, device]) => [id, { ...device, txHash: batch.txHash, verification: "Verified" }])
       )
     })),
+
+  hydrateSnapshot: (snapshot) =>
+    set((state) => {
+      const latestByDevice = new Map<string, Record<string, any>>();
+      for (const event of snapshot.telemetryEvents ?? []) {
+        if (!latestByDevice.has(event.device_id)) latestByDevice.set(event.device_id, event);
+      }
+
+      const devices = { ...state.devices };
+      for (const [index, row] of (snapshot.devices ?? []).entries()) {
+        const existing = devices[row.id];
+        const latest = latestByDevice.get(row.id);
+        const angle = (index + 1) * 0.72;
+        const lat = row.latest_lat_e7 ? Number(row.latest_lat_e7) / 1e7 : existing?.lat ?? WAREHOUSE.lat + Math.sin(angle) * 0.00055;
+        const lng = row.latest_lng_e7 ? Number(row.latest_lng_e7) / 1e7 : existing?.lng ?? WAREHOUSE.lng + Math.cos(angle) * 0.00055;
+        devices[row.id] = {
+          id: row.id,
+          alias: row.alias ?? existing?.alias ?? aliasFor(row.id, index),
+          deviceClass: row.device_class ?? existing?.deviceClass ?? "unknown",
+          lat,
+          lng,
+          accuracyM: row.latest_accuracy_cm ? Math.round(Number(row.latest_accuracy_cm) / 100) : existing?.accuracyM ?? null,
+          batteryPct: existing?.batteryPct ?? null,
+          online: Boolean(row.online ?? true),
+          lastSeen: row.last_seen_at ? new Date(row.last_seen_at).getTime() : existing?.lastSeen ?? Date.now(),
+          joinedAt: row.first_seen_at ? new Date(row.first_seen_at).getTime() : existing?.joinedAt ?? Date.now(),
+          seq: latest?.seq ? Number(latest.seq) : existing?.seq ?? 0,
+          riskScore: Number(row.latest_risk_score ?? latest?.risk_score ?? existing?.riskScore ?? 0),
+          riskFlags: Number(row.latest_risk_flags ?? latest?.risk_flags ?? existing?.riskFlags ?? 0),
+          verification: row.latest_batch_sequence || row.latest_tx_hash ? "Verified" : latest ? "Signed" : existing?.verification ?? "Live",
+          payloadHash: latest?.payload_hash ?? existing?.payloadHash ?? `0x${"0".repeat(64)}`,
+          txHash: row.latest_tx_hash ?? latest?.tx_hash ?? existing?.txHash,
+          trail: existing?.trail ?? [{ lat, lng, t: row.last_seen_at ? new Date(row.last_seen_at).getTime() : Date.now() }]
+        };
+      }
+
+      const batches = (snapshot.batches ?? []).map((row) => ({
+        sequence: Number(row.sequence),
+        merkleRoot: row.merkle_root,
+        sampleCount: Number(row.sample_count ?? 0),
+        maxRiskScore: Number(row.max_risk_score ?? 0),
+        flags: Number(row.combined_flags ?? 0),
+        txHash: row.tx_hash,
+        status: row.status === "pending" ? "pending" : "verified",
+        createdAt: row.committed_at || row.submitted_at || row.created_at ? new Date(row.committed_at ?? row.submitted_at ?? row.created_at).getTime() : Date.now(),
+        simulated: process.env.NEXT_PUBLIC_CHAIN_DISABLED !== "false"
+      })) as EvidenceBatch[];
+
+      const incidents = (snapshot.incidents ?? []).map((row) => ({
+        id: String(row.id),
+        deviceId: row.device_id ?? "unknown",
+        alias: devices[row.device_id]?.alias ?? "Mobile Witness",
+        riskScore: Number(row.risk_score ?? 0),
+        flags: Number(row.risk_flags ?? 0),
+        reason: row.agent_summary ?? row.summary ?? row.title ?? "custody incident",
+        payloadHash: row.evidence_hash ?? `0x${"0".repeat(64)}`,
+        txHash: row.tx_hash ?? undefined,
+        createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
+      })) as Incident[];
+
+      return {
+        devices,
+        batches: batches.length ? batches : state.batches,
+        latestTx: batches[0]?.txHash ?? state.latestTx,
+        incidents: incidents.length ? incidents : state.incidents,
+        telemetryEvents: [
+          ...state.telemetryEvents,
+          ...(snapshot.telemetryEvents ?? []).map((event) => (event.received_at ? new Date(event.received_at).getTime() : Date.now()))
+        ].slice(-400),
+        swarmOverlay: Object.keys(devices).length >= 30 || state.swarmOverlay
+      };
+    }),
 
   reset: () => set({ devices: {}, incidents: [], batches: [], latestTx: undefined, telemetryEvents: [], swarmOverlay: false, viewportMode: "indoor" }),
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
