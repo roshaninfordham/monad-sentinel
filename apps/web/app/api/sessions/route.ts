@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bytes32FromText } from "@monad-sentinel/shared";
+import { bytes32FromText, deriveShipmentCommitment } from "@monad-sentinel/shared";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 function randomId(prefix = "") {
@@ -18,6 +18,9 @@ export async function POST(request: Request) {
   const joinToken = randomId("join_");
   const dashboardToken = randomId("dash_");
   const contractSessionId = bytes32FromText(sessionId);
+  const shipmentCommitment = deriveShipmentCommitment(joinToken, sessionId);
+  const routePolicyCommitment = bytes32FromText(`${sessionId}:route-policy:indoor-pharma-corridor`);
+  const destinationCommitment = bytes32FromText(`${sessionId}:destination:receiver-geofence`);
   const label = body.label ?? "Live Custody Swarm";
   const viewportMode = body.viewportMode ?? body.mode ?? "indoor";
   const useCase = body.useCase ?? "pharma";
@@ -30,6 +33,10 @@ export async function POST(request: Request) {
       use_case: useCase,
       contract_session_id: contractSessionId,
       contract_address: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? null,
+      shipment_commitment: shipmentCommitment,
+      route_policy_commitment: routePolicyCommitment,
+      destination_commitment: destinationCommitment,
+      join_token: joinToken,
       join_token_hash: await sha256(joinToken),
       dashboard_token_hash: await sha256(dashboardToken),
       active: true,
@@ -38,6 +45,33 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    const { error: shipmentError } = await supabase.from("shipments").insert({
+      id: `ship_${sessionId.slice(2)}`,
+      session_id: sessionId,
+      shipment_commitment: shipmentCommitment,
+      product_type: useCase,
+      status: "in_transit",
+      origin_label: "Origin cold-chain hub",
+      destination_label: "Receiver pharmacy dock",
+      origin_lat_e7: 407484400,
+      origin_lng_e7: -739856600,
+      destination_lat_e7: 407586000,
+      destination_lng_e7: -739855000,
+      route_policy_commitment: routePolicyCommitment,
+      destination_commitment: destinationCommitment
+    });
+    if (shipmentError) {
+      return NextResponse.json({ error: shipmentError.message }, { status: 500 });
+    }
+    await supabase.from("route_policies").insert({
+      id: `route_${sessionId.slice(2)}`,
+      shipment_id: `ship_${sessionId.slice(2)}`,
+      route_policy_commitment: routePolicyCommitment,
+      checkpoints: [
+        { label: "Origin cold-chain hub", type: "pickup", authorized: true },
+        { label: "Receiver pharmacy dock", type: "delivery", authorized: true }
+      ]
+    });
   }
 
   return NextResponse.json({
@@ -47,6 +81,9 @@ export async function POST(request: Request) {
       useCase,
       viewportMode,
       contractSessionId,
+      shipmentCommitment,
+      routePolicyCommitment,
+      destinationCommitment,
       active: true,
       simulatedPersistence: !supabase
     },

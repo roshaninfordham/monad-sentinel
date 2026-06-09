@@ -5,7 +5,7 @@ import { buildMerkleProof, buildMerkleRoot, bytes32FromText, Hex } from "@monad-
 import { broadcastRealtime, getSupabaseAdmin } from "@/lib/supabase/server";
 
 const abi = parseAbi([
-  "function commitBatch(bytes32 sessionId,uint64 sequence,bytes32 merkleRoot,uint32 sampleCount,uint16 maxRiskScore,uint16 combinedFlags,bytes32 alertsRoot,uint256 firstClientTimestamp,uint256 lastClientTimestamp)"
+  "function commitBatch(bytes32 shipmentCommitment,uint64 sequence,bytes32 merkleRoot,uint32 sampleCount,uint16 maxRiskScore,uint16 combinedFlags,bytes32 dataAvailabilityHash,uint256 timeBucket)"
 ]);
 
 type TelemetryRow = {
@@ -42,6 +42,9 @@ async function submitCommit(args: {
   sampleCount: number;
   maxRiskScore: number;
   combinedFlags: number;
+  shipmentCommitment: Hex;
+  dataAvailabilityHash: Hex;
+  timeBucket: number;
   firstClientTimestampMs: number;
   lastClientTimestampMs: number;
 }) {
@@ -66,15 +69,14 @@ async function submitCommit(args: {
     abi,
     functionName: "commitBatch",
     args: [
-      bytes32FromText(args.sessionId),
+      args.shipmentCommitment,
       BigInt(args.sequence),
       args.merkleRoot,
       args.sampleCount,
       args.maxRiskScore,
       args.combinedFlags,
-      "0x0000000000000000000000000000000000000000000000000000000000000000",
-      BigInt(args.firstClientTimestampMs),
-      BigInt(args.lastClientTimestampMs)
+      args.dataAvailabilityHash,
+      BigInt(args.timeBucket)
     ]
   });
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
@@ -105,15 +107,34 @@ export async function POST(request: Request) {
   const sequence = await nextSequence(body.sessionId);
   const leaves = rows.map((row) => row.leaf_hash);
   const merkleRoot = buildMerkleRoot(leaves);
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("shipment_commitment,route_policy_commitment")
+    .eq("id", body.sessionId)
+    .single();
+  const dataAvailabilityHash = keccak256(
+    stringToHex(
+      JSON.stringify({
+        sessionId: body.sessionId,
+        eventIds: rows.map((row) => row.id),
+        merkleRoot
+      })
+    )
+  );
   const maxRiskScore = Math.max(...rows.map((row) => Number(row.risk_score ?? 0)));
   const combinedFlags = rows.reduce((acc, row) => acc | Number(row.risk_flags ?? 0), 0);
   const firstClientTimestampMs = Number(rows[0].client_timestamp_ms);
   const lastClientTimestampMs = Number(rows[rows.length - 1].client_timestamp_ms);
+  const timeBucket = Math.floor(firstClientTimestampMs / 60000) * 60000;
 
   const { error: batchError } = await supabase.from("telemetry_batches").insert({
     session_id: body.sessionId,
     sequence,
     merkle_root: merkleRoot,
+    shipment_commitment: session?.shipment_commitment ?? null,
+    route_policy_commitment: session?.route_policy_commitment ?? null,
+    data_availability_hash: dataAvailabilityHash,
+    time_bucket: timeBucket,
     sample_count: rows.length,
     max_risk_score: maxRiskScore,
     combined_flags: combinedFlags,
@@ -142,6 +163,9 @@ export async function POST(request: Request) {
     sampleCount: rows.length,
     maxRiskScore,
     combinedFlags,
+    shipmentCommitment: (session?.shipment_commitment as Hex | null) ?? bytes32FromText(body.sessionId),
+    dataAvailabilityHash,
+    timeBucket,
     firstClientTimestampMs,
     lastClientTimestampMs
   });
@@ -162,6 +186,25 @@ export async function POST(request: Request) {
   const deviceIds = [...new Set(rows.map((row) => row.device_id))];
   await supabase.from("telemetry_events").update({ batch_sequence: sequence, tx_hash: receipt.txHash, committed_at: committedAt }).in("id", eventIds);
   await supabase.from("devices").update({ latest_batch_sequence: sequence, latest_tx_hash: receipt.txHash }).in("id", deviceIds);
+  await supabase
+    .from("custody_events")
+    .update({ batch_sequence: sequence, tx_hash: receipt.txHash })
+    .in("telemetry_event_id", eventIds);
+  await supabase
+    .from("incidents")
+    .update({ tx_hash: receipt.txHash })
+    .eq("session_id", body.sessionId)
+    .in("telemetry_event_id", eventIds);
+  await supabase.from("evidence_receipts").insert({
+    session_id: body.sessionId,
+    shipment_id: `ship_${body.sessionId.slice(2)}`,
+    batch_sequence: sequence,
+    tx_hash: receipt.txHash,
+    merkle_root: merkleRoot,
+    selected_event_ids: eventIds,
+    verification_status: receipt.simulated ? "verified" : "unverified",
+    verified_at: receipt.simulated ? committedAt : null
+  });
 
   const batch = {
     sessionId: body.sessionId,
@@ -170,6 +213,8 @@ export async function POST(request: Request) {
     sampleCount: rows.length,
     maxRiskScore,
     combinedFlags,
+    dataAvailabilityHash,
+    timeBucket,
     txHash: receipt.txHash,
     status: receipt.simulated ? "verified" : "committed",
     simulated: receipt.simulated

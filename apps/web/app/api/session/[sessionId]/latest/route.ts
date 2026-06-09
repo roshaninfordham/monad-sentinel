@@ -14,7 +14,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
     });
   }
 
-  const [devices, telemetryEvents, incidents, batches] = await Promise.all([
+  const [devices, telemetryEvents, incidents, batches, shipments, custodyEvents] = await Promise.all([
     supabase
       .from("devices")
       .select(
@@ -25,7 +25,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
       .limit(200),
     supabase
       .from("telemetry_events")
-      .select("id,session_id,device_id,seq,payload_hash,leaf_hash,risk_score,risk_flags,risk_reason,received_at,batch_sequence,tx_hash")
+      .select(
+        "id,session_id,device_id,seq,payload_hash,leaf_hash,event_hash,payload_commitment,ciphertext_hash,risk_commitment,event_class,risk_score,risk_flags,risk_reason,received_at,batch_sequence,tx_hash"
+      )
       .eq("session_id", sessionId)
       .order("received_at", { ascending: false })
       .limit(200),
@@ -37,13 +39,26 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
       .limit(25),
     supabase
       .from("telemetry_batches")
-      .select("session_id,sequence,merkle_root,sample_count,max_risk_score,combined_flags,status,tx_hash,submitted_at,committed_at")
+      .select(
+        "session_id,sequence,merkle_root,sample_count,max_risk_score,combined_flags,status,tx_hash,submitted_at,committed_at,shipment_commitment,route_policy_commitment,data_availability_hash,time_bucket"
+      )
       .eq("session_id", sessionId)
       .order("sequence", { ascending: false })
-      .limit(20)
+      .limit(20),
+    supabase
+      .from("shipments")
+      .select("*")
+      .eq("session_id", sessionId)
+      .limit(5),
+    supabase
+      .from("custody_events")
+      .select("*")
+      .eq("session_id", sessionId)
+      .order("timestamp_ms", { ascending: false })
+      .limit(50)
   ]);
 
-  const error = devices.error ?? telemetryEvents.error ?? incidents.error ?? batches.error;
+  const error = devices.error ?? telemetryEvents.error ?? incidents.error ?? batches.error ?? shipments.error ?? custodyEvents.error;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -53,6 +68,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
     telemetryEvents: telemetryEvents.data ?? [],
     incidents: incidents.data ?? [],
     batches: batches.data ?? [],
+    shipments: shipments.data ?? [],
+    custodyEvents: custodyEvents.data ?? [],
     simulatedPersistence: false
   });
 }
