@@ -1,12 +1,13 @@
 create table if not exists public.sessions (
   id text primary key,
   label text not null,
+  use_case text not null default 'pharma',
   contract_session_id text not null unique,
   contract_address text,
   join_token_hash text not null,
   dashboard_token_hash text,
   active boolean not null default true,
-  mode text not null default 'indoor',
+  viewport_mode text not null default 'indoor',
   origin_lat_e7 integer,
   origin_lng_e7 integer,
   created_at timestamptz not null default now(),
@@ -63,6 +64,8 @@ create table if not exists public.telemetry_events (
   shake_count integer not null default 0,
   battery_pct integer,
   charging boolean,
+  simulated_temperature_c_x10 integer,
+  product_type text,
 
   payload jsonb not null,
   risk_score integer not null default 0,

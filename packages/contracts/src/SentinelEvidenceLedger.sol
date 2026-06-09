@@ -58,11 +58,11 @@ contract SentinelEvidenceLedger is ISentinelEvidenceLedger {
     }
 
     mapping(bytes32 => Session) public sessions;
-    mapping(bytes32 => mapping(uint64 => bytes32)) private _batchRoots;
+    mapping(bytes32 => mapping(uint64 => bytes32)) public batchRoots;
     mapping(bytes32 => mapping(bytes32 => bool)) public registeredDevices;
 
     modifier onlySessionAuthority(bytes32 sessionId) {
-        require(sessions[sessionId].authority == msg.sender, "NOT_SESSION_AUTHORITY");
+        require(sessions[sessionId].authority == msg.sender, "NOT_AUTHORITY");
         _;
     }
 
@@ -96,8 +96,8 @@ contract SentinelEvidenceLedger is ISentinelEvidenceLedger {
     ) external onlySessionAuthority(sessionId) {
         require(sessions[sessionId].active, "SESSION_INACTIVE");
         require(merkleRoot != bytes32(0), "EMPTY_ROOT");
-        require(_batchRoots[sessionId][sequence] == bytes32(0), "BATCH_EXISTS");
-        _batchRoots[sessionId][sequence] = merkleRoot;
+        require(batchRoots[sessionId][sequence] == bytes32(0), "BATCH_EXISTS");
+        batchRoots[sessionId][sequence] = merkleRoot;
 
         emit BatchCommitted(
             sessionId,
@@ -126,6 +126,6 @@ contract SentinelEvidenceLedger is ISentinelEvidenceLedger {
     }
 
     function batchRoot(bytes32 sessionId, uint64 sequence) external view returns (bytes32) {
-        return _batchRoots[sessionId][sequence];
+        return batchRoots[sessionId][sequence];
     }
 }

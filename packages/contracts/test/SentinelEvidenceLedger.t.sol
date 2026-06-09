@@ -28,14 +28,14 @@ contract SentinelEvidenceLedgerTest is Test {
     function testNonAuthorityCannotRegisterDevice() public {
         ledger.createSession(sessionId, "Demo");
         vm.prank(address(0xBEEF));
-        vm.expectRevert("NOT_SESSION_AUTHORITY");
+        vm.expectRevert("NOT_AUTHORITY");
         ledger.registerDevice(sessionId, keccak256("device"), keccak256("pub"), 1);
     }
 
     function testNonAuthorityCannotCommitBatch() public {
         ledger.createSession(sessionId, "Demo");
         vm.prank(address(0xBEEF));
-        vm.expectRevert("NOT_SESSION_AUTHORITY");
+        vm.expectRevert("NOT_AUTHORITY");
         ledger.commitBatch(sessionId, 1, keccak256("root"), 10, 1, 0, bytes32(0), 1, 2);
     }
 

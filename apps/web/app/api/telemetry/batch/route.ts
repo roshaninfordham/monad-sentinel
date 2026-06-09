@@ -113,6 +113,8 @@ export async function POST(request: Request) {
           ),
           battery_pct: event.payload.batteryPct ?? null,
           charging: event.payload.charging ?? null,
+          simulated_temperature_c_x10: event.manualAlert ? null : 42,
+          product_type: "pharma",
           payload: event.payload,
           risk_score: risk.riskScore,
           risk_flags: risk.riskFlags,

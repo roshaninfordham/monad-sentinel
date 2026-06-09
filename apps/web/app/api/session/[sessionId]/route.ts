@@ -10,7 +10,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
       session: {
         id: sessionId,
         label: "Live Custody Swarm",
-        mode: "indoor",
+        useCase: "pharma",
+        viewportMode: "indoor",
         contractSessionId: bytes32FromText(sessionId),
         active: true,
         simulatedPersistence: true
