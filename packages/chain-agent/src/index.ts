@@ -219,7 +219,15 @@ async function tick() {
   }
 }
 
+let tickInFlight = false;
+
 console.log(`[chain-agent] starting (${chainDisabled ? "simulated chain" : "Monad Testnet"})`);
 setInterval(() => {
-  tick().catch((error) => console.error("[chain-agent]", error.message ?? error));
+  if (tickInFlight) return;
+  tickInFlight = true;
+  tick()
+    .catch((error) => console.error("[chain-agent]", error.message ?? error))
+    .finally(() => {
+      tickInFlight = false;
+    });
 }, pollMs);
