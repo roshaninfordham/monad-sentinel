@@ -10,6 +10,7 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
   const triggerRandomTamper = useSentinelStore((state) => state.triggerRandomTamper);
   const triggerColdChainBreach = useSentinelStore((state) => state.triggerColdChainBreach);
   const commitBatch = useSentinelStore((state) => state.commitBatch);
+  const receiveBatch = useSentinelStore((state) => state.receiveBatch);
   const reset = useSentinelStore((state) => state.reset);
   const soundEnabled = useSentinelStore((state) => state.soundEnabled);
   const latestBatch = useSentinelStore((state) => state.batches[0]);
@@ -32,9 +33,28 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
     if (incident && soundEnabled) SoundEngine.playTamper();
   }
 
-  function batch() {
+  async function batch() {
     const committed = commitBatch();
     if (committed && soundEnabled) SoundEngine.playBatchCommitted();
+    const response = await fetch("/api/chain/emergency-commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId })
+    }).catch(() => null);
+    if (!response?.ok) return;
+    const body = await response.json().catch(() => null);
+    if (!body?.batch) return;
+    receiveBatch({
+      sequence: Number(body.batch.sequence),
+      merkleRoot: body.batch.merkleRoot,
+      sampleCount: Number(body.batch.sampleCount),
+      maxRiskScore: Number(body.batch.maxRiskScore),
+      flags: Number(body.batch.combinedFlags ?? 0),
+      txHash: body.batch.txHash,
+      status: "verified",
+      createdAt: Date.now(),
+      simulated: Boolean(body.batch.simulated)
+    });
   }
 
   function copyJoinUrl() {
