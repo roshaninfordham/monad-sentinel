@@ -1,0 +1,225 @@
+import "dotenv/config";
+import { createClient } from "@supabase/supabase-js";
+import { createPublicClient, createWalletClient, http, parseAbi, stringToHex, keccak256 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { buildMerkleProof, buildMerkleRoot, bytes32FromText, Hex } from "@monad-sentinel/shared";
+
+const chainDisabled = process.env.CHAIN_DISABLED !== "false";
+const pollMs = Number(process.env.CHAIN_AGENT_POLL_MS ?? 1000);
+const maxBatchSize = Number(process.env.CHAIN_AGENT_MAX_BATCH_SIZE ?? 200);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as Hex | undefined;
+const rpcUrl = process.env.MONAD_RPC_URL;
+const gatewayPrivateKey = process.env.GATEWAY_PRIVATE_KEY as Hex | undefined;
+
+const abi = parseAbi([
+  "function commitBatch(bytes32 sessionId,uint64 sequence,bytes32 merkleRoot,uint32 sampleCount,uint16 maxRiskScore,uint16 combinedFlags,bytes32 alertsRoot,uint256 firstClientTimestamp,uint256 lastClientTimestamp)"
+]);
+
+type SupabaseAny = ReturnType<typeof createClient<any, "public", any>>;
+type TelemetryRow = {
+  id: number;
+  session_id: string;
+  device_id: string;
+  seq: number;
+  leaf_hash: string;
+  risk_score: number | null;
+  risk_flags: number | null;
+  client_timestamp_ms: number;
+};
+
+function requireSupabase() {
+  if (!supabaseUrl || !supabaseKey) {
+    return null;
+  }
+  return createClient<any, "public", any>(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+
+function simulatedTxHash(seed: string): Hex {
+  return keccak256(stringToHex(`simulated:${seed}:${Date.now()}`));
+}
+
+async function nextSequence(supabase: SupabaseAny, sessionId: string) {
+  const { data, error } = await supabase
+    .from("telemetry_batches")
+    .select("sequence")
+    .eq("session_id", sessionId)
+    .order("sequence", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{ sequence: number }>;
+  return Number(rows[0]?.sequence ?? 0) + 1;
+}
+
+async function commitToMonad(args: {
+  sessionId: string;
+  sequence: number;
+  merkleRoot: Hex;
+  sampleCount: number;
+  maxRiskScore: number;
+  combinedFlags: number;
+  firstClientTimestampMs: number;
+  lastClientTimestampMs: number;
+}): Promise<{ txHash: Hex; blockNumber?: bigint; simulated: boolean }> {
+  if (chainDisabled) {
+    return { txHash: simulatedTxHash(`${args.sessionId}:${args.sequence}`), simulated: true };
+  }
+  if (!rpcUrl || !gatewayPrivateKey || !contractAddress) {
+    throw new Error("MONAD_RPC_URL, GATEWAY_PRIVATE_KEY, and NEXT_PUBLIC_CONTRACT_ADDRESS are required when CHAIN_DISABLED=false");
+  }
+
+  const account = privateKeyToAccount(gatewayPrivateKey);
+  const publicClient = createPublicClient({ transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account, transport: http(rpcUrl) });
+  const txHash = await walletClient.writeContract({
+    chain: null,
+    address: contractAddress,
+    abi,
+    functionName: "commitBatch",
+    args: [
+      bytes32FromText(args.sessionId),
+      BigInt(args.sequence),
+      args.merkleRoot,
+      args.sampleCount,
+      args.maxRiskScore,
+      args.combinedFlags,
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+      BigInt(args.firstClientTimestampMs),
+      BigInt(args.lastClientTimestampMs)
+    ]
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  return { txHash, blockNumber: receipt.blockNumber, simulated: false };
+}
+
+async function processSession(supabase: SupabaseAny, sessionId: string) {
+  const { data: events, error } = await supabase
+    .from("telemetry_events")
+    .select("id,session_id,device_id,seq,leaf_hash,risk_score,risk_flags,client_timestamp_ms")
+    .eq("session_id", sessionId)
+    .is("batch_sequence", null)
+    .order("id", { ascending: true })
+    .limit(maxBatchSize);
+  if (error) throw error;
+  const rows = (events ?? []) as TelemetryRow[];
+  if (!rows.length) return null;
+
+  const sequence = await nextSequence(supabase, sessionId);
+  const leaves = rows.map((event) => event.leaf_hash as Hex);
+  const merkleRoot = buildMerkleRoot(leaves);
+  const sampleCount = rows.length;
+  const maxRiskScore = Math.max(...rows.map((event) => Number(event.risk_score ?? 0)));
+  const combinedFlags = rows.reduce((acc, event) => acc | Number(event.risk_flags ?? 0), 0);
+  const firstClientTimestampMs = Number(rows[0].client_timestamp_ms);
+  const lastClientTimestampMs = Number(rows[rows.length - 1].client_timestamp_ms);
+
+  const { error: batchError } = await supabase.from("telemetry_batches").insert({
+    session_id: sessionId,
+    sequence,
+    merkle_root: merkleRoot,
+    sample_count: sampleCount,
+    max_risk_score: maxRiskScore,
+    combined_flags: combinedFlags,
+    first_client_timestamp_ms: firstClientTimestampMs,
+    last_client_timestamp_ms: lastClientTimestampMs,
+    status: "pending",
+    contract_address: contractAddress ?? null,
+    submitted_at: new Date().toISOString()
+  });
+  if (batchError) throw batchError;
+
+  await supabase.from("merkle_proofs").insert(
+    rows.map((event, index) => ({
+      event_id: event.id,
+      session_id: sessionId,
+      batch_sequence: sequence,
+      leaf_index: index,
+      proof: buildMerkleProof(leaves, index)
+    }))
+  );
+
+  const receipt = await commitToMonad({
+    sessionId,
+    sequence,
+    merkleRoot,
+    sampleCount,
+    maxRiskScore,
+    combinedFlags,
+    firstClientTimestampMs,
+    lastClientTimestampMs
+  });
+
+  const committedAt = new Date().toISOString();
+  await supabase
+    .from("telemetry_batches")
+    .update({
+      status: receipt.simulated ? "verified" : "committed",
+      tx_hash: receipt.txHash,
+      block_number: receipt.blockNumber ? Number(receipt.blockNumber) : null,
+      committed_at: committedAt
+    })
+    .eq("session_id", sessionId)
+    .eq("sequence", sequence);
+
+  await supabase
+    .from("telemetry_events")
+    .update({ batch_sequence: sequence, tx_hash: receipt.txHash, committed_at: committedAt })
+    .in(
+      "id",
+      rows.map((event) => event.id)
+    );
+
+  await supabase.channel(`session:${sessionId}:chain`).send({
+    type: "broadcast",
+    event: "chain.batch.committed",
+    payload: {
+      type: "chain.batch.committed",
+      batch: {
+        sessionId,
+        sequence,
+        merkleRoot,
+        sampleCount,
+        maxRiskScore,
+        combinedFlags,
+        txHash: receipt.txHash,
+        status: receipt.simulated ? "verified" : "committed",
+        simulated: receipt.simulated
+      }
+    }
+  });
+
+  return { sessionId, sequence, sampleCount, txHash: receipt.txHash, simulated: receipt.simulated };
+}
+
+async function tick() {
+  const supabase = requireSupabase();
+  if (!supabase) {
+    console.log("[chain-agent] waiting for Supabase env; no durable telemetry to batch");
+    return;
+  }
+  const { data: rows, error } = await supabase
+    .from("telemetry_events")
+    .select("session_id")
+    .is("batch_sequence", null)
+    .order("id", { ascending: true })
+    .limit(1000);
+  if (error) throw error;
+
+  const sessions = [...new Set((rows ?? []).map((row) => row.session_id as string))];
+  for (const sessionId of sessions) {
+    const result = await processSession(supabase, sessionId);
+    if (result) {
+      console.log(
+        `[chain-agent] ${result.simulated ? "SIMULATED" : "COMMITTED"} session=${result.sessionId} batch=${result.sequence} samples=${result.sampleCount} tx=${result.txHash}`
+      );
+    }
+  }
+}
+
+console.log(`[chain-agent] starting (${chainDisabled ? "simulated chain" : "Monad Testnet"})`);
+setInterval(() => {
+  tick().catch((error) => console.error("[chain-agent]", error.message ?? error));
+}, pollMs);
