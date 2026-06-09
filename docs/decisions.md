@@ -4,7 +4,7 @@ This document captures the main engineering choices and why they were made.
 
 ## ADR-001: Use Monad for Evidence, Not Raw Telemetry
 
-**Decision:** Commit Merkle roots and incident events to Monad. Keep raw telemetry off-chain.
+**Decision:** Commit Merkle roots and compact metadata to Monad. Keep raw telemetry encrypted off-chain.
 
 **Reasoning:**
 
@@ -13,7 +13,20 @@ This document captures the main engineering choices and why they were made.
 - Public RPCs and demos should avoid one transaction per phone per second.
 - Merkle roots give a compact proof that many observations existed at commit time.
 
-**Tradeoff:** Receipts need off-chain telemetry rows and Merkle proofs to verify inclusion. This is acceptable because Monad stores the immutable commitment.
+**Tradeoff:** Receipts need off-chain encrypted telemetry rows and Merkle proofs to verify inclusion. This is acceptable because Monad stores the immutable commitment.
+
+## ADR-001B: Use Private Evidence Anchoring
+
+**Decision:** Store encrypted payloads, salted payload commitments, ciphertext hashes, risk commitments, and hash-linked event hashes off-chain; anchor only the Merkle root to Monad.
+
+**Reasoning:**
+
+- Raw hashes of GPS coordinates can be brute-forced against likely routes.
+- Salted commitments and ciphertext hashes avoid exposing route or condition data.
+- Hash-linked events make post-hoc insertion and editing detectable.
+- Selective reveal receipts can prove one event without revealing the whole journey.
+
+**Tradeoff:** Authorized users need access to encrypted payload storage and decryption keys. Public verifiers can prove inclusion and integrity, but not inspect private telemetry unless it is selectively revealed.
 
 ## ADR-002: Use Supabase for App State and Realtime UX
 
@@ -25,7 +38,7 @@ This document captures the main engineering choices and why they were made.
 - The dashboard needs low-latency room state.
 - Postgres gives simple durability and queryability for receipts.
 
-**Tradeoff:** Supabase is a trusted app backend. Monad evidence commitments limit the damage of post-hoc database edits.
+**Tradeoff:** Supabase is an availability layer, not the trust anchor. A database admin can delete data, but cannot silently edit committed history without breaking receipts.
 
 ## ADR-003: Audience Phones Use Ephemeral Keys
 
@@ -85,3 +98,25 @@ This document captures the main engineering choices and why they were made.
 - Vercel functions should not be treated as persistent workers.
 
 **Tradeoff:** Deployment has one extra process. During the hackathon it can run locally.
+
+## ADR-008: Use Serverless Emergency Commit as Demo Safety Net
+
+**Decision:** Keep `/api/chain/emergency-commit` as a serverless fallback that can batch uncommitted rows when the long-running worker is not running.
+
+**Reasoning:**
+
+- The live demo should not fail just because the worker process is down.
+- It exercises the same Merkle proof and batch tables as the Chain Agent.
+- When `CHAIN_DISABLED=true`, it labels the result as simulated.
+
+**Tradeoff:** It is not a replacement for a production worker with nonce management and retry queues.
+
+## ADR-009: Simulated Chain Must Be Labeled
+
+**Decision:** The UI and receipt distinguish real Monad commitments from simulated chain mode.
+
+**Reasoning:**
+
+- Hackathon demos often need local/cloud fallback.
+- Fake transaction hashes should never be presented as real public proofs.
+- The same pipeline still validates hashing, signing, encryption, Merkle proofs, and receipt logic.

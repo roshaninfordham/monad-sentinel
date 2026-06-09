@@ -15,10 +15,13 @@ Recommended demo path:
 2. Confirm dashboard shows a QR and session status.
 3. Click **Enable Sound**.
 4. Click **Spawn 50**.
-5. Click **Trigger theft**.
-6. Click **Cold breach** if you want a pharma/cold-chain risk.
-7. Click **Emergency batch**.
-8. Open the latest receipt from the evidence rail.
+5. Click **Bump** to show shock without theft.
+6. Click **Mishandling** to show repeated handling risk.
+7. Click **Theft** to show shock plus route deviation/unauthorized dwell/seal break.
+8. Click **Cold breach** if you want a pharma/cold-chain risk.
+9. Click **Emergency batch**.
+10. Open the latest receipt from the evidence rail.
+11. Open `/shipment/[sessionId]` for the authorized journey and delivery proof view.
 
 ## One-Command Helpers
 
@@ -61,7 +64,19 @@ Browser GPS and motion require HTTPS in most real deployments.
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Run `supabase/migrations/001_init.sql`.
+2. Run both migrations:
+
+```bash
+npx supabase db push
+```
+
+Or manually apply:
+
+```txt
+supabase/migrations/001_init.sql
+supabase/migrations/002_private_evidence.sql
+```
+
 3. Enable Realtime for tables/channels as needed.
 4. Set env vars:
 
@@ -72,6 +87,17 @@ SUPABASE_SECRET_KEY=
 ```
 
 The browser uses the publishable key. API routes and the Chain Agent use the secret key.
+
+## Tokenized QR
+
+Session creation returns:
+
+```txt
+dashboardUrl = /dashboard/[sessionId]?d=[dashboardToken]
+joinUrl      = /s/[sessionId]?t=[joinToken]
+```
+
+The dashboard stores only the dashboard token in its URL. It calls `/api/session/[sessionId]?d=...` to retrieve the join token for the QR. Telemetry ingest validates the join token before accepting signed payloads.
 
 ## Monad Setup
 
@@ -123,6 +149,7 @@ If env vars are missing, it waits rather than crashing.
 1:25  Red ripple and incident card appear.
 1:45  Commit emergency batch; evidence rail updates.
 2:05  Open receipt and explain hash -> proof -> Monad root.
+2:25  Open shipment journey and explain public/private data split.
 ```
 
 ## Troubleshooting
@@ -142,6 +169,14 @@ Check Supabase env vars and Realtime channel configuration. Local simulation wor
 ### Chain batches stay simulated
 
 Set `CHAIN_DISABLED=false` and provide `MONAD_RPC_URL`, `GATEWAY_PRIVATE_KEY`, and `NEXT_PUBLIC_CONTRACT_ADDRESS`.
+
+### Receipt says simulated chain mode
+
+This is expected while `CHAIN_DISABLED=true`. The receipt still verifies encrypted evidence metadata and the Merkle proof. It only reads contract `batchRoot` when Monad RPC and contract env vars are configured and chain mode is enabled.
+
+### Supabase CLI asks for keychain password
+
+macOS is asking to unlock the saved Supabase CLI token. This is separate from Google login. Allowing it once lets `supabase db push` reuse the existing CLI login. If it loops, kill stale `supabase` processes and rerun `supabase login` from a normal terminal.
 
 ### Foundry commands fail
 

@@ -2,18 +2,20 @@
 
 **Stop trusting GPS. Prove custody.**
 
-Monad Sentinel is a live proof-of-custody swarm for high-value logistics. A presenter starts a session and shows one QR code. Audience phones join as temporary signed sensor witnesses, stream browser telemetry, trigger tamper alerts when shaken, and have their telemetry hashes batched into Merkle roots committed to Monad.
+Monad Sentinel is a privacy-preserving proof-of-custody layer for pharma, medical, food, FMCG, luxury, and high-value logistics. A presenter starts a session and shows one QR code. Audience phones join as temporary signed sensor witnesses, stream browser telemetry, trigger shock/tamper scenarios, and have encrypted evidence leaves batched into Merkle roots committed to Monad.
 
-The demo is designed to be useful even when GPS is bad, Wi-Fi is noisy, or Monad RPC is slow: realtime UX stays off-chain, evidence commitments are compact, and simulation mode remains available.
+The product does **not** publish raw GPS on-chain. Raw telemetry is encrypted off-chain. Devices sign events. Events are hash-linked. Monad stores compact Merkle roots and metadata so journey history cannot be silently rewritten.
 
 ## What It Demonstrates
 
 - QR-powered phone onboarding with no wallet popup and no testnet tokens for the audience.
 - Ephemeral local device keys that sign EIP-712 telemetry.
 - Realtime command center with indoor command room, geo map, globe mode, evidence rail, incident feed, sound, and 50-device simulation.
-- Deterministic risk agents for shake/tamper, geofence exit, GPS jump, battery, and accuracy loss.
+- Private Evidence Protocol: salted payload commitments, AES-GCM encrypted evidence, ciphertext hashes, hash-linked events, and Merkle batch roots.
+- Deterministic risk agents for bump, mishandling, likely theft, route deviation, cold-chain excursion, and delivery evidence.
 - Supabase/Postgres as the app state and realtime layer.
-- Monad Testnet smart contract as the tamper-evident evidence rail.
+- Monad Testnet smart contract as the public evidence anchor.
+- Judge-facing receipts and journey views that explain what is public, private, and verified.
 
 ## Architecture
 
@@ -21,10 +23,10 @@ The demo is designed to be useful even when GPS is bad, Wi-Fi is noisy, or Monad
 flowchart LR
   Phone[Audience Phone<br/>GPS + motion + ephemeral signer]
   API[Next.js API<br/>validate + recover signer + score risk]
-  DB[(Supabase Postgres<br/>sessions devices telemetry batches)]
+  DB[(Supabase Postgres<br/>encrypted events + proofs)]
   RT[Supabase Realtime<br/>Broadcast + Presence]
   Dash[Command Center<br/>map incidents evidence rail]
-  Agent[Chain Agent<br/>Merkle batches + nonce-aware txs]
+  Agent[Chain Agent<br/>Merkle batches + Monad txs]
   Monad[(Monad Testnet<br/>SentinelEvidenceLedger)]
   Receipt[Receipt Page<br/>signature + proof + batchRoot]
 
@@ -40,7 +42,39 @@ flowchart LR
   DB --> Receipt
 ```
 
-Monad is used for compact evidence commitments, not raw GPS storage. Supabase handles high-frequency room state and temporary raw telemetry.
+Monad is used for compact evidence commitments, not raw GPS storage. Supabase handles high-frequency room state, encrypted telemetry envelopes, Merkle proofs, and journey visualization.
+
+## Privacy Model
+
+```mermaid
+flowchart LR
+  Raw[Raw GPS / temp / shock] --> Encrypt[Encrypt off-chain]
+  Encrypt --> Hash[Payload + ciphertext commitments]
+  Hash --> Merkle[Merkle batch]
+  Merkle --> Monad[Monad root commitment]
+  Encrypt --> Dashboard[Authorized journey dashboard]
+  Monad --> Receipt[Selective reveal receipt]
+  Hash --> Receipt
+```
+
+Public on Monad:
+
+- shipment commitment
+- Merkle root
+- batch sequence
+- sample count
+- combined risk flags
+- data availability hash
+- timestamp bucket
+- tx hash
+
+Private off-chain:
+
+- exact route and GPS
+- temperature and shock timeline
+- device identity
+- product/customer identity
+- handoff details
 
 ## Quick Start
 
@@ -52,10 +86,11 @@ pnpm dev
 Open `http://localhost:3000`, click **Start Live Custody Swarm**, then use the dashboard demo controls:
 
 - **Spawn 50** to fill the command center.
-- **Trigger theft** to create a tamper incident.
+- **Bump**, **Mishandling**, and **Theft** to show the risk model does not equate every shake with theft.
 - **Cold breach** to simulate cargo temperature risk.
 - **Emergency batch** to create a simulated evidence block.
 - Open `/s/[sessionId]` on a phone to test the mobile witness flow.
+- Open `/shipment/[sessionId]` to see the authorized journey map and delivery proof policy.
 
 The app runs in local demo mode without Supabase or Monad credentials.
 
@@ -77,7 +112,7 @@ packages/shared          Telemetry schema, EIP-712, hashing, risk, Merkle helper
 packages/contracts       Solidity SentinelEvidenceLedger contract
 packages/chain-agent     Long-running Merkle batch and Monad commit worker
 supabase/migrations      Postgres schema for sessions, devices, telemetry, proofs
-docs                     Architecture, protocol, decisions, runbook
+docs                     Architecture, protocol, algorithms, decisions, runbook
 ```
 
 ## Scripts
@@ -153,8 +188,10 @@ sequenceDiagram
 ## Documentation
 
 - [Architecture](docs/architecture.md)
-- [Telemetry Protocol](docs/protocol.md)
+- [Private Evidence Protocol](docs/protocol.md)
+- [Algorithms](docs/algorithms.md)
 - [System Decisions](docs/decisions.md)
+- [Judge Q&A](docs/judge-qa.md)
 - [Demo and Deployment Runbook](docs/runbook.md)
 - [Codebase Map](docs/codebase-map.md)
 
