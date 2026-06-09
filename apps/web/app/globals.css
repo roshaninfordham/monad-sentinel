@@ -29,6 +29,7 @@
 
 html,
 body {
+  width: 100%;
   min-height: 100%;
   margin: 0;
   background: var(--bg-primary);
@@ -147,18 +148,21 @@ a {
   position: relative;
   z-index: 10;
   display: grid;
-  height: 100vh;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 12px;
+  width: min(100vw, 1920px);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 auto;
+  grid-template-rows: auto minmax(0, 1fr) clamp(154px, 16dvh, 176px);
+  gap: clamp(8px, 0.7dvw, 12px);
   overflow: hidden;
-  padding: 12px;
+  padding: clamp(8px, 0.7dvw, 12px);
 }
 
 .dashboard-grid {
   display: grid;
   min-height: 0;
-  grid-template-columns: 300px minmax(0, 1fr) 360px;
-  gap: 12px;
+  grid-template-columns: clamp(250px, 15.5vw, 300px) minmax(560px, 1fr) clamp(320px, 19vw, 380px);
+  gap: clamp(8px, 0.7dvw, 12px);
   overflow: hidden;
 }
 
@@ -185,7 +189,7 @@ a {
 }
 
 .dashboard-right-bottom {
-  grid-template-rows: minmax(0, 0.72fr) minmax(320px, 1.28fr);
+  grid-template-rows: minmax(96px, 0.56fr) minmax(260px, 1.44fr);
 }
 
 .confirmation-grid {
@@ -194,9 +198,25 @@ a {
   gap: 8px;
 }
 
+.custody-viewport {
+  contain: layout paint size;
+}
+
+.custody-viewport .maplibregl-map,
+.custody-viewport .maplibregl-canvas-container,
+.custody-viewport .maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.custody-viewport .maplibregl-control-container {
+  font-size: 11px;
+}
+
 @media (max-width: 1100px) {
   .dashboard-shell {
     height: auto;
+    max-height: none;
     min-height: 100vh;
     overflow: auto;
   }
@@ -204,6 +224,12 @@ a {
   .dashboard-grid {
     grid-template-columns: 1fr;
     overflow: visible;
+  }
+}
+
+@media (min-width: 1800px) {
+  .dashboard-grid {
+    grid-template-columns: 300px minmax(720px, 1fr) 380px;
   }
 }
 

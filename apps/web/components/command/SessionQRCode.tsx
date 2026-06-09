@@ -41,8 +41,8 @@ export function SessionQRCode({ sessionId }: { sessionId: string }) {
           <Copy size={16} />
         </button>
       </div>
-      <div className="rounded-lg bg-white p-3 shadow-[0_0_36px_rgba(37,243,132,.28)]">
-        <QRCodeSVG value={url} size={172} level="M" />
+      <div className="grid place-items-center rounded-lg bg-white p-3 shadow-[0_0_36px_rgba(37,243,132,.28)]">
+        <QRCodeSVG value={url} size={216} level="M" bgColor="#ffffff" fgColor="#05020a" marginSize={2} />
       </div>
       <div className="hash mt-3 truncate text-xs text-[var(--text-secondary)]">{url}</div>
     </div>

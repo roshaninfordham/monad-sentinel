@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import maplibregl, { GeoJSONSource, Map, Marker } from "maplibre-gl";
-import { LiveDevice } from "@monad-sentinel/shared";
+import { distanceMeters, LiveDevice } from "@monad-sentinel/shared";
 import { useSentinelStore } from "@/lib/store/sentinelStore";
 
 const DEMO_ROUTE_COORDS: [number, number][] = [
@@ -17,6 +17,7 @@ const DEMO_ROUTE_COORDS: [number, number][] = [
 const DEMO_DEVIATION_COORD: [number, number] = [-73.98518, 40.74812];
 const DEMO_CHECKPOINT_COORD: [number, number] = [-73.98574, 40.74843];
 const DEMO_DESTINATION_COORD = DEMO_ROUTE_COORDS[DEMO_ROUTE_COORDS.length - 1];
+const DEMO_ROUTE_CENTER = { lat: 40.74844, lng: -73.98566 };
 
 const style = {
   version: 8,
@@ -106,6 +107,7 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const markersRef = useRef<Record<string, Marker>>({});
+  const lastFitSignatureRef = useRef("");
   const devices = useSentinelStore((state) => state.devices);
   const incidents = useSentinelStore((state) => state.incidents);
   const demoRoute = useSentinelStore((state) => state.demoRoute);
@@ -124,7 +126,13 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
       attributionControl: false
     });
     mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-    return () => mapRef.current?.remove();
+    const resizeObserver = new ResizeObserver(() => mapRef.current?.resize());
+    resizeObserver.observe(containerRef.current);
+    return () => {
+      resizeObserver.disconnect();
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -137,7 +145,8 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
         delete markersRef.current[id];
       }
     }
-    deviceList.forEach((device) => {
+    deviceList.forEach((device, index) => {
+      const displayCoord = displayCoordForDevice(device, index, demoRoute);
       const element = document.createElement("div");
       const selected = demoRoute.selectedDeviceId === device.id;
       element.className = "relative grid size-8 place-items-center cursor-pointer";
@@ -152,32 +161,37 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
 
       if (!markersRef.current[device.id]) {
         markersRef.current[device.id] = new maplibregl.Marker({ element, anchor: "center" })
-          .setLngLat([device.lng, device.lat])
+          .setLngLat(displayCoord)
           .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(`<strong>${device.alias}</strong><br/>Risk ${device.riskScore}`))
           .addTo(map);
       } else {
         const marker = markersRef.current[device.id];
-        marker.setLngLat([device.lng, device.lat]);
+        marker.setLngLat(displayCoord);
         marker.getElement().replaceWith(element);
-        markersRef.current[device.id] = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([device.lng, device.lat]).addTo(map);
+        markersRef.current[device.id] = new maplibregl.Marker({ element, anchor: "center" }).setLngLat(displayCoord).addTo(map);
         marker.remove();
       }
     });
 
-    if (deviceList.length > 1) {
+    const fitSignature = `${deviceList.length}:${demoRoute.stage}:${demoRoute.selectedDeviceId ?? "none"}`;
+    if (fitSignature !== lastFitSignatureRef.current) {
+      lastFitSignatureRef.current = fitSignature;
       const bounds = new maplibregl.LngLatBounds();
-      deviceList.forEach((device) => bounds.extend([device.lng, device.lat]));
-      map.fitBounds(bounds, { padding: 110, maxZoom: 16.5, duration: 900 });
+      DEMO_ROUTE_COORDS.forEach((coord) => bounds.extend(coord));
+      deviceList.forEach((device, index) => bounds.extend(displayCoordForDevice(device, index, demoRoute)));
+      map.fitBounds(bounds, { padding: { top: 110, right: 90, bottom: 80, left: 90 }, maxZoom: 15.8, duration: 700 });
     }
-  }, [demoRoute.selectedDeviceId, deviceList, selectDevice]);
+  }, [demoRoute, deviceList, selectDevice]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const updateRoute = () => {
       const selected = demoRoute.selectedDeviceId ? devices[demoRoute.selectedDeviceId] : undefined;
-      const trailCoords = selected?.trail?.map((point) => [point.lng, point.lat] as [number, number]) ?? [];
-      const actualCoords = trailCoords.length > 1 ? trailCoords : progressCoords(demoRoute.progress, demoRoute.stage);
+      const selectedIndex = selected ? deviceList.findIndex((device) => device.id === selected.id) : -1;
+      const trailCoords =
+        selected && isNearDemoRoute(selected) ? selected.trail?.map((point) => [point.lng, point.lat] as [number, number]) ?? [] : [];
+      const actualCoords = trailCoords.length > 1 ? trailCoords : progressCoords(demoRoute.progress, demoRoute.stage, selectedIndex);
       const actualSource = map.getSource("actualRoute") as GeoJSONSource | undefined;
       const deviationSource = map.getSource("deviation") as GeoJSONSource | undefined;
       actualSource?.setData(lineFeature(actualCoords.length > 1 ? actualCoords : [DEMO_ROUTE_COORDS[0], DEMO_ROUTE_COORDS[0]]));
@@ -189,7 +203,7 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
       return;
     }
     map.once("load", updateRoute);
-  }, [demoRoute.progress, demoRoute.selectedDeviceId, demoRoute.stage, devices]);
+  }, [demoRoute.progress, demoRoute.selectedDeviceId, demoRoute.stage, deviceList, devices]);
 
   useEffect(() => {
     const latest = incidents[0];
@@ -197,8 +211,9 @@ export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
     if (!latest || !map) return;
     const device = devices[latest.deviceId];
     if (!device) return;
-    map.flyTo({ center: [device.lng, device.lat], zoom: 17, pitch: 68, speed: 0.9 });
-  }, [incidents, devices]);
+    const index = Object.values(devices).findIndex((item) => item.id === device.id);
+    map.flyTo({ center: displayCoordForDevice(device, index, demoRoute), zoom: 16.2, pitch: 64, speed: 0.9 });
+  }, [demoRoute, incidents, devices]);
 
   const latestAlertDevice = incidents[0] ? devices[incidents[0].deviceId] : undefined;
 
@@ -265,8 +280,39 @@ function emptyFeatureCollection() {
   } as const;
 }
 
-function progressCoords(progress: number, stage: string): [number, number][] {
+function progressCoords(progress: number, stage: string, deviceIndex = 0): [number, number][] {
   if (stage === "deviation") return [...DEMO_ROUTE_COORDS.slice(0, 4), DEMO_DEVIATION_COORD];
+  if (stage === "authorized_stop") return [...DEMO_ROUTE_COORDS.slice(0, 3), DEMO_CHECKPOINT_COORD];
+  if (stage === "delivery") return DEMO_ROUTE_COORDS;
   const count = Math.max(2, Math.ceil(Math.min(Math.max(progress, 0.12), 1) * DEMO_ROUTE_COORDS.length));
-  return DEMO_ROUTE_COORDS.slice(0, count);
+  const coords = DEMO_ROUTE_COORDS.slice(0, count);
+  coords[coords.length - 1] = routeCoordForIndex(deviceIndex, progress || 0.18);
+  return coords;
+}
+
+function isNearDemoRoute(device: LiveDevice) {
+  return distanceMeters({ lat: device.lat, lng: device.lng }, DEMO_ROUTE_CENTER) < 2_000;
+}
+
+function routeCoordForIndex(index: number, progress: number): [number, number] {
+  const clamped = Math.min(Math.max(progress, 0.1), 1);
+  const scaled = clamped * (DEMO_ROUTE_COORDS.length - 1);
+  const routeIndex = Math.min(Math.floor(scaled), DEMO_ROUTE_COORDS.length - 2);
+  const local = scaled - routeIndex;
+  const from = DEMO_ROUTE_COORDS[routeIndex];
+  const to = DEMO_ROUTE_COORDS[routeIndex + 1];
+  const offset = ((Math.max(index, 0) % 9) - 4) * 0.000018;
+  return [from[0] + (to[0] - from[0]) * local + offset, from[1] + (to[1] - from[1]) * local - offset * 0.35];
+}
+
+function displayCoordForDevice(
+  device: LiveDevice,
+  index: number,
+  route: { progress: number; stage: string; selectedDeviceId?: string }
+): [number, number] {
+  if (isNearDemoRoute(device)) return [device.lng, device.lat];
+  if (route.stage === "deviation" && route.selectedDeviceId === device.id) return DEMO_DEVIATION_COORD;
+  if (route.stage === "authorized_stop" && route.selectedDeviceId === device.id) return DEMO_CHECKPOINT_COORD;
+  if (route.stage === "delivery" && route.selectedDeviceId === device.id) return DEMO_DESTINATION_COORD;
+  return routeCoordForIndex(index, route.selectedDeviceId === device.id ? route.progress || 0.34 : 0.22 + (index % 8) * 0.075);
 }

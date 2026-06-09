@@ -16,9 +16,9 @@ export function CustodyViewport() {
   const latestAlertId = incidents[0]?.deviceId;
 
   return (
-    <div className="command-panel relative min-h-0 overflow-hidden rounded-lg">
+    <div className="command-panel custody-viewport relative min-h-0 overflow-hidden rounded-lg">
       <div className="absolute left-4 top-4 z-20">
-        <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-[var(--text-secondary)]">3D Custody Viewport</div>
+        <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-[var(--text-secondary)]">Live Custody Viewport</div>
         <div className="flex gap-2">
           <ModeButton active={viewportMode === "indoor"} onClick={() => setViewportMode("indoor")} icon={<Warehouse size={14} />} label="Indoor" />
           <ModeButton active={viewportMode === "geo"} onClick={() => setViewportMode("geo")} icon={<Map size={14} />} label="Geo" />

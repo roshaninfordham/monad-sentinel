@@ -217,7 +217,7 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
   soundEnabled: false,
   swarmOverlay: false,
   indoorSpatialization: true,
-  viewportMode: "indoor",
+  viewportMode: "geo",
 
   addDevice: (device) =>
     set((state) => ({
@@ -739,7 +739,7 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
       latestTx: undefined,
       telemetryEvents: [],
       swarmOverlay: false,
-      viewportMode: "indoor"
+      viewportMode: "geo"
     }),
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
   setIndoorSpatialization: (enabled) => set({ indoorSpatialization: enabled }),

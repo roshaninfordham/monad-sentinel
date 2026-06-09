@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { BackgroundGrid } from "@/components/command/BackgroundGrid";
 import { ConfirmationProgress } from "@/components/command/ConfirmationProgress";
 import { CustodyViewport } from "@/components/command/CustodyViewport";
@@ -23,12 +23,22 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
   const receiveBatch = useSentinelStore((state) => state.receiveBatch);
   const soundEnabled = useSentinelStore((state) => state.soundEnabled);
   const deviceCount = useSentinelStore((state) => Object.keys(state.devices).length);
+  const lastAutoCommitCursor = useRef("");
 
   useEffect(() => {
     let inFlight = false;
     const id = window.setInterval(() => {
       if (inFlight) return;
-      if (Object.keys(useSentinelStore.getState().devices).length > 0) {
+      const snapshot = useSentinelStore.getState();
+      const devices = Object.values(snapshot.devices);
+      const evidenceCursor = [
+        devices.length,
+        devices.reduce((total, device) => total + device.seq + device.riskScore + device.riskFlags, 0),
+        snapshot.incidents.length,
+        snapshot.telemetryEvents.length
+      ].join(":");
+      if (devices.length > 0 && evidenceCursor !== lastAutoCommitCursor.current) {
+        lastAutoCommitCursor.current = evidenceCursor;
         inFlight = true;
         fetch("/api/chain/emergency-commit", {
           method: "POST",
@@ -143,7 +153,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
 
   return (
-    <main className="relative h-screen overflow-hidden">
+    <main className="relative h-[100dvh] overflow-hidden">
       <BackgroundGrid />
       <SwarmVerifiedOverlay />
       <div className="dashboard-shell">
