@@ -124,6 +124,9 @@ a {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.42rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .presenter-actions .control-button {
@@ -194,6 +197,14 @@ a {
 
 .dashboard-right-bottom {
   grid-template-rows: minmax(96px, 0.56fr) minmax(260px, 1.44fr);
+}
+
+.dashboard-right > .command-panel,
+.dashboard-right .panel {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .confirmation-grid {
