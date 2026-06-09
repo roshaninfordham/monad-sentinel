@@ -34,7 +34,7 @@ function colorFor(device: LiveDevice) {
   return "#4CC9F0";
 }
 
-export function CustodyMap() {
+export function CustodyMap({ embedded = false }: { embedded?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const markersRef = useRef<Record<string, Marker>>({});
@@ -108,8 +108,8 @@ export function CustodyMap() {
 
   const latestAlertDevice = incidents[0] ? devices[incidents[0].deviceId] : undefined;
 
-  return (
-    <div className="panel relative min-h-0 overflow-hidden rounded-lg">
+  const content = (
+    <>
       <div ref={containerRef} className="absolute inset-0" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent,rgba(5,2,10,.36)_65%,rgba(5,2,10,.9))]" />
       {latestAlertDevice && (
@@ -120,8 +120,18 @@ export function CustodyMap() {
         />
       )}
       <div className="absolute left-4 top-4 rounded-md border border-[rgba(37,243,132,.24)] bg-black/45 px-3 py-2 text-xs text-[var(--verified-green)] backdrop-blur">
-        3D custody map · indoor demo spatialization
+        Geo Map Mode · real GPS when available
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="absolute inset-0">{content}</div>;
+  }
+
+  return (
+    <div className="panel relative min-h-0 overflow-hidden rounded-lg">
+      {content}
     </div>
   );
 }

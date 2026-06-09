@@ -21,6 +21,7 @@ type SentinelState = {
   soundEnabled: boolean;
   swarmOverlay: boolean;
   indoorSpatialization: boolean;
+  viewportMode: "indoor" | "geo" | "globe";
   addDevice: (device: LiveDevice) => void;
   addRealtimeDevice: (device: {
     id: string;
@@ -32,11 +33,13 @@ type SentinelState = {
   ingestTelemetry: (payload: TelemetryPayload, manualAlert?: boolean) => Incident | null;
   spawnSimulatedDevices: (count: number, sessionId: string) => void;
   triggerRandomTamper: () => Incident | null;
+  triggerColdChainBreach: () => Incident | null;
   commitBatch: () => EvidenceBatch | null;
   receiveBatch: (batch: EvidenceBatch) => void;
   reset: () => void;
   setSoundEnabled: (enabled: boolean) => void;
   setIndoorSpatialization: (enabled: boolean) => void;
+  setViewportMode: (mode: "indoor" | "geo" | "globe") => void;
   hideSwarmOverlay: () => void;
 };
 
@@ -87,6 +90,7 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
   soundEnabled: false,
   swarmOverlay: false,
   indoorSpatialization: true,
+  viewportMode: "indoor",
 
   addDevice: (device) =>
     set((state) => ({
@@ -192,6 +196,35 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
     return get().ingestTelemetry(simulatedPayload(target.payloadHash.slice(2, 10), index, target, true), true);
   },
 
+  triggerColdChainBreach: () => {
+    const devices = Object.values(get().devices);
+    if (!devices.length) return null;
+    const target = devices[Math.floor(Math.random() * devices.length)];
+    const incident: Incident = {
+      id: crypto.randomUUID(),
+      deviceId: target.id,
+      alias: target.alias,
+      riskScore: 76,
+      flags: target.riskFlags | 256,
+      reason: "cold-chain simulation: cargo temperature exceeded safe threshold. Evidence queued for Monad.",
+      payloadHash: target.payloadHash,
+      createdAt: Date.now()
+    };
+    set((state) => ({
+      incidents: [incident, ...state.incidents].slice(0, 12),
+      devices: {
+        ...state.devices,
+        [target.id]: {
+          ...target,
+          riskScore: Math.max(target.riskScore, 76),
+          riskFlags: target.riskFlags | 256,
+          verification: "Batched"
+        }
+      }
+    }));
+    return incident;
+  },
+
   commitBatch: () => {
     const devices = Object.values(get().devices);
     if (!devices.length) return null;
@@ -231,8 +264,9 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
       )
     })),
 
-  reset: () => set({ devices: {}, incidents: [], batches: [], latestTx: undefined, telemetryEvents: [], swarmOverlay: false }),
+  reset: () => set({ devices: {}, incidents: [], batches: [], latestTx: undefined, telemetryEvents: [], swarmOverlay: false, viewportMode: "indoor" }),
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
   setIndoorSpatialization: (enabled) => set({ indoorSpatialization: enabled }),
+  setViewportMode: (mode) => set({ viewportMode: mode }),
   hideSwarmOverlay: () => set({ swarmOverlay: false })
 }));

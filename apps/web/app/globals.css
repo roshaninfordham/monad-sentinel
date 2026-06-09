@@ -1,11 +1,17 @@
 @import "tailwindcss";
 @import "maplibre-gl/dist/maplibre-gl.css";
 
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
+@source "../src/**/*.{ts,tsx}";
+
 :root {
   --bg-primary: #05020a;
   --bg-secondary: #0b0614;
+  --bg-tertiary: #120a20;
   --panel-bg: rgba(18, 10, 32, 0.72);
   --panel-border: rgba(180, 120, 255, 0.22);
+  --panel-border-strong: rgba(180, 120, 255, 0.42);
   --monad-purple: #836ef9;
   --monad-purple-soft: #a98bff;
   --verified-green: #25f384;
@@ -44,6 +50,142 @@ a {
   background: var(--panel-bg);
   box-shadow: 0 0 24px rgba(131, 110, 249, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(18px);
+}
+
+.command-panel {
+  position: relative;
+  border: 1px solid var(--panel-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
+    var(--panel-bg);
+  box-shadow:
+    0 0 34px rgba(131, 110, 249, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+}
+
+.command-panel::before,
+.command-panel::after {
+  pointer-events: none;
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  content: "";
+  border-color: rgba(169, 139, 255, 0.62);
+}
+
+.command-panel::before {
+  top: 8px;
+  left: 8px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.command-panel::after {
+  right: 8px;
+  bottom: 8px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
+.control-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.055);
+  padding: 0.6rem 0.75rem;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.control-button:hover {
+  border-color: var(--panel-border-strong);
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.control-button:focus-visible {
+  outline: 2px solid var(--chain-blue);
+  outline-offset: 2px;
+}
+
+.metric-number {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.dashboard-shell {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  height: 100vh;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.dashboard-grid {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 300px minmax(0, 1fr) 320px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.dashboard-left,
+.dashboard-center,
+.dashboard-right,
+.dashboard-right-bottom {
+  display: grid;
+  min-height: 0;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.dashboard-left {
+  grid-template-rows: minmax(0, 1.2fr) minmax(180px, 0.8fr);
+}
+
+.dashboard-center {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.dashboard-right {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.dashboard-right-bottom {
+  grid-template-rows: minmax(0, 1fr) minmax(170px, 0.65fr);
+}
+
+.confirmation-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
 }
 
 .mono {
@@ -97,6 +239,41 @@ a {
   100% {
     transform: translate(-50%, -50%) scale(6);
     opacity: 0;
+  }
+}
+
+@keyframes cargo-beam {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  20% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes floor-drift {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(42px);
+  }
+}
+
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    filter: blur(0);
+  }
+  50% {
+    opacity: 1;
+    filter: blur(0.5px);
   }
 }
 

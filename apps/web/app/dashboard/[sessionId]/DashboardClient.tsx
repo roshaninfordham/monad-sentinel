@@ -2,15 +2,18 @@
 
 import { useEffect } from "react";
 import { BackgroundGrid } from "@/components/command/BackgroundGrid";
-import { CustodyMap } from "@/components/command/CustodyMap";
+import { ConfirmationProgress } from "@/components/command/ConfirmationProgress";
+import { CustodyViewport } from "@/components/command/CustodyViewport";
 import { DemoControls } from "@/components/command/DemoControls";
 import { DeviceGrid } from "@/components/command/DeviceGrid";
 import { EvidenceRail } from "@/components/command/EvidenceRail";
 import { IncidentFeed } from "@/components/command/IncidentFeed";
+import { LiveEvidenceLog } from "@/components/command/LiveEvidenceLog";
 import { MetricsRail } from "@/components/command/MetricsRail";
 import { SessionQRCode } from "@/components/command/SessionQRCode";
 import { SoundToggle } from "@/components/command/SoundToggle";
 import { SwarmVerifiedOverlay } from "@/components/command/SwarmVerifiedOverlay";
+import { TopStatusBar } from "@/components/command/TopStatusBar";
 import { SoundEngine } from "@/lib/sound/SoundEngine";
 import { useSentinelStore } from "@/lib/store/sentinelStore";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -97,24 +100,33 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
     <main className="relative h-screen overflow-hidden">
       <BackgroundGrid />
       <SwarmVerifiedOverlay />
-      <div className="relative z-10 grid h-full grid-rows-[auto_1fr_auto] gap-3 p-3">
-        <header className="panel flex items-center justify-between gap-4 rounded-lg px-4 py-3">
-          <div>
-            <div className="text-xl font-semibold">Monad Sentinel</div>
-            <div className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">Live Proof-of-Custody Swarm · Session {sessionId}</div>
+      <div className="dashboard-shell">
+        <TopStatusBar sessionId={sessionId} />
+        <section className="dashboard-grid" data-dashboard-grid>
+          <div className="dashboard-left">
+            <MetricsRail />
+            <LiveEvidenceLog />
           </div>
-          <div className="flex items-center gap-3">
-            <SoundToggle />
-            <DemoControls sessionId={sessionId} />
+          <div className="dashboard-center">
+            <CustodyViewport />
+            <ConfirmationProgress />
           </div>
-        </header>
-        <section className="grid min-h-0 grid-cols-[320px_1fr_290px] gap-3">
-          <MetricsRail />
-          <CustodyMap />
-          <aside className="flex min-h-0 flex-col gap-3">
+          <aside className="dashboard-right">
+            <div className="command-panel rounded-lg p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Presenter Console</div>
+                  <div className="text-xs text-[var(--text-secondary)]">Simulation and demo controls</div>
+                </div>
+                <SoundToggle />
+              </div>
+              <DemoControls sessionId={sessionId} />
+            </div>
             <SessionQRCode sessionId={sessionId} />
-            <IncidentFeed />
-            <DeviceGrid />
+            <div className="dashboard-right-bottom">
+              <IncidentFeed />
+              <DeviceGrid />
+            </div>
           </aside>
         </section>
         <EvidenceRail sessionId={sessionId} />

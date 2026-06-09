@@ -1,6 +1,7 @@
 "use client";
 
 import { Smartphone, Tablet, Monitor, CheckCircle2 } from "lucide-react";
+import { useMemo } from "react";
 import { useSentinelStore } from "@/lib/store/sentinelStore";
 import { shortHash } from "@monad-sentinel/shared";
 
@@ -11,7 +12,8 @@ function DeviceIcon({ type }: { type: string }) {
 }
 
 export function DeviceGrid() {
-  const devices = Object.values(useSentinelStore((state) => state.devices));
+  const devicesById = useSentinelStore((state) => state.devices);
+  const devices = useMemo(() => Object.values(devicesById), [devicesById]);
   return (
     <div className="panel max-h-[28vh] overflow-hidden rounded-lg p-4">
       <div className="mb-3 text-sm font-semibold">Live Evidence Log</div>

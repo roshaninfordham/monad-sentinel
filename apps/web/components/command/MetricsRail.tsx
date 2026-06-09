@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlertTriangle, Boxes, CheckCircle2, RadioTower } from "lucide-react";
+import { AlertTriangle, Boxes, RadioTower } from "lucide-react";
 import { useMemo } from "react";
 import { useSentinelStore } from "@/lib/store/sentinelStore";
 import { AnimatedMetric } from "./AnimatedMetric";
@@ -18,8 +18,8 @@ export function MetricsRail() {
   const avgLatency = batches.length ? "0.8s" : "pending";
 
   return (
-    <aside className="flex min-w-0 flex-col gap-3">
-      <div className="panel rounded-lg p-4">
+    <aside className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-3 overflow-hidden">
+      <div className="command-panel rounded-lg p-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-[var(--verified-green)]">
           <RadioTower size={17} /> Custody Network Activity
         </div>
@@ -31,26 +31,6 @@ export function MetricsRail() {
         </div>
       </div>
 
-      <div className="panel rounded-lg p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-          <Activity size={17} /> Evidence Confirmation Progress
-        </div>
-        {["Observed", "Signed", "Batched", "Committed", "Verified"].map((stage, index) => (
-          <div key={stage} className="mb-2 flex items-center gap-2">
-            <div
-              className="grid size-6 place-items-center rounded-full border text-[10px]"
-              style={{
-                borderColor: index < 2 || batches.length ? "var(--verified-green)" : "rgba(255,255,255,.16)",
-                color: index < 2 || batches.length ? "var(--verified-green)" : "var(--muted)"
-              }}
-            >
-              {index < 2 || batches.length ? <CheckCircle2 size={13} /> : index + 1}
-            </div>
-            <span className="text-sm text-[var(--text-secondary)]">{stage}</span>
-          </div>
-        ))}
-      </div>
-
       <div className="grid grid-cols-2 gap-3">
         <AnimatedMetric label="Verified" value={verified} accent="var(--verified-green)" />
         <AnimatedMetric label="Alerts" value={incidents.length} accent={incidents.length ? "var(--tamper-red)" : undefined} />
@@ -58,7 +38,7 @@ export function MetricsRail() {
         <AnimatedMetric label="Stale" value={deviceList.filter((device) => now - device.lastSeen > 5000).length} />
       </div>
 
-      <div className="panel rounded-lg p-4">
+      <div className="command-panel min-h-0 overflow-hidden rounded-lg p-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-[var(--warning-amber)]">
           <AlertTriangle size={17} /> Threat Contention Map
         </div>
@@ -76,7 +56,7 @@ export function MetricsRail() {
         </div>
       </div>
 
-      <div className="panel rounded-lg p-4 text-xs text-[var(--text-secondary)]">
+      <div className="command-panel rounded-lg p-4 text-xs text-[var(--text-secondary)]">
         <div className="mb-2 flex items-center gap-2 font-semibold text-[var(--chain-blue)]">
           <Boxes size={15} /> Latest Monad Tx
         </div>
