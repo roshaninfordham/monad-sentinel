@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, ShieldCheck, TriangleAlert } from "lucide-react";
-import { createPublicClient, http, parseAbi } from "viem";
 import { BackgroundGrid } from "@/components/command/BackgroundGrid";
+import { getExplorerTxLinks } from "@/lib/chain/explorer";
+import { verifyBatchOnChain, type ChainBatchRow } from "@/lib/chain/verification";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { Hex, shortHash, verifyMerkleProof, type MerkleProofStep } from "@monad-sentinel/shared";
 
-type BatchRow = {
+type BatchRow = ChainBatchRow & {
   session_id: string;
   sequence: number;
   merkle_root: Hex;
@@ -17,6 +18,9 @@ type BatchRow = {
   shipment_commitment: Hex | null;
   data_availability_hash: Hex | null;
   time_bucket: number | null;
+  block_number: number | null;
+  contract_address: Hex | null;
+  error: string | null;
   first_client_timestamp_ms: number;
   last_client_timestamp_ms: number;
   committed_at: string | null;
@@ -47,38 +51,7 @@ type ProofRow = {
   proof: MerkleProofStep[];
 };
 
-const batchRootAbi = parseAbi(["function batchRoot(bytes32 shipmentCommitment,uint64 sequence) view returns (bytes32)"]);
-
-function explorerTxUrl(txHash?: string | null) {
-  if (!txHash) return null;
-  const explorer = process.env.NEXT_PUBLIC_MONAD_EXPLORER_URL ?? "";
-  if (!explorer) return null;
-  return explorer.endsWith("/") ? `${explorer}${txHash}` : `${explorer}${txHash}`;
-}
-
-async function readContractRoot(batch: BatchRow): Promise<{ checked: boolean; matches: boolean; root?: Hex; reason?: string }> {
-  const chainDisabled = process.env.CHAIN_DISABLED !== "false";
-  if (chainDisabled) return { checked: false, matches: true, reason: "simulated chain mode" };
-  const rpcUrl = process.env.MONAD_RPC_URL;
-  const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as Hex | undefined;
-  if (!rpcUrl || !contractAddress || !batch.shipment_commitment) {
-    return { checked: false, matches: false, reason: "Monad RPC or contract address not configured" };
-  }
-  try {
-    const client = createPublicClient({ transport: http(rpcUrl) });
-    const root = await client.readContract({
-      address: contractAddress,
-      abi: batchRootAbi,
-      functionName: "batchRoot",
-      args: [batch.shipment_commitment, BigInt(batch.sequence)]
-    });
-    return { checked: true, matches: root.toLowerCase() === batch.merkle_root.toLowerCase(), root };
-  } catch (error) {
-    return { checked: false, matches: false, reason: error instanceof Error ? error.message : "contract read failed" };
-  }
-}
-
-function VerificationLine({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+function VerificationLine({ label, value, ok, statusText }: { label: string; value: string; ok: boolean; statusText?: string }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-md border border-white/10 bg-white/[0.03] p-4">
       <div>
@@ -93,7 +66,7 @@ function VerificationLine({ label, value, ok }: { label: string; value: string; 
         }
       >
         {ok ? <CheckCircle2 size={14} /> : <TriangleAlert size={14} />}
-        {ok ? "Verified" : "Pending"}
+        {statusText ?? (ok ? "Verified" : "Pending")}
       </span>
     </div>
   );
@@ -103,7 +76,6 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
   const { sessionId, batchId } = await params;
   const sequence = Number(batchId);
   const supabase = getSupabaseAdmin();
-  const explorer = process.env.NEXT_PUBLIC_MONAD_EXPLORER_URL ?? "";
 
   if (!supabase || !Number.isFinite(sequence)) {
     return (
@@ -122,7 +94,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
   const { data: batch } = await supabase
     .from("telemetry_batches")
     .select(
-      "session_id,sequence,merkle_root,sample_count,max_risk_score,combined_flags,status,tx_hash,shipment_commitment,data_availability_hash,time_bucket,first_client_timestamp_ms,last_client_timestamp_ms,committed_at"
+      "session_id,sequence,merkle_root,sample_count,max_risk_score,combined_flags,status,tx_hash,shipment_commitment,data_availability_hash,time_bucket,block_number,contract_address,error,first_client_timestamp_ms,last_client_timestamp_ms,committed_at"
     )
     .eq("session_id", sessionId)
     .eq("sequence", sequence)
@@ -168,10 +140,10 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
       : !!event?.ciphertext_hash;
   const signatureRecorded = !!event?.signature && !!event.recovered_address;
   const commitmentRecorded = !!event?.payload_commitment && !!event.event_hash && !!event.risk_commitment;
-  const contractRoot = await readContractRoot(batch);
-  const simulatedChain = process.env.CHAIN_DISABLED !== "false" || batch.tx_hash?.startsWith("0x") && batch.status === "verified";
-  const verified = !!event && proofValid && ciphertextHashMatches && signatureRecorded && commitmentRecorded && contractRoot.matches;
-  const txUrl = explorerTxUrl(batch.tx_hash);
+  const chainVerification = await verifyBatchOnChain(batch);
+  const simulatedChain = chainVerification.mode === "simulated";
+  const verified = !!event && proofValid && ciphertextHashMatches && signatureRecorded && commitmentRecorded && chainVerification.verified;
+  const txLinks = chainVerification.mode === "real" ? getExplorerTxLinks({ txHash: batch.tx_hash, status: batch.status, simulated: false }) : [];
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -189,7 +161,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
             }
           >
             {verified ? <ShieldCheck size={16} /> : <TriangleAlert size={16} />}
-            {verified ? (contractRoot.checked ? "Verified on Monad" : "Verified in simulated chain mode") : "Verification pending"}
+            {simulatedChain ? "Simulated receipt only" : verified ? "Verified on Monad" : "Chain verification pending"}
           </div>
 
           <div className="grid gap-8 lg:grid-cols-[1.1fr_.9fr]">
@@ -197,11 +169,14 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
               <h1 className="text-4xl font-semibold">Evidence Batch #{batch.sequence}</h1>
               <p className="mt-3 max-w-2xl text-[var(--text-secondary)]">
                 Raw GPS, condition data, and device identity stay encrypted off-chain. This receipt verifies the selected
-                event against its private evidence commitment, Merkle proof, and Monad batch root.
+                event against its private evidence commitment, Merkle proof, and internal chain verification. Explorer availability
+                is not used as proof.
               </p>
             </div>
             <div className="rounded-lg border border-[rgba(131,110,249,.25)] bg-[rgba(131,110,249,.08)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">Public Monad Data</div>
+              <div className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+                {simulatedChain ? "Simulated Chain Data" : "Public Monad Data"}
+              </div>
               <div className="mt-3 grid gap-2 text-sm">
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--text-secondary)]">Root</span>
@@ -217,8 +192,13 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--text-secondary)]">Tx</span>
-                  <span className="hash">{shortHash(batch.tx_hash ?? undefined)}</span>
+                  <span className="hash">{batch.tx_hash ? shortHash(batch.tx_hash) : "not submitted"}</span>
                 </div>
+                {simulatedChain ? (
+                  <div className="rounded-md border border-[rgba(255,176,32,.24)] bg-[rgba(255,176,32,.1)] p-2 text-xs text-[var(--warning-amber)]">
+                    Simulated hashes are not linked to Monad explorers and are never presented as real chain proof.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -263,23 +243,31 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
               ok={proofValid}
             />
             <VerificationLine
-              label={contractRoot.checked ? "Contract batchRoot matches" : "Monad root check"}
-              value={contractRoot.checked ? `Contract root ${shortHash(contractRoot.root)}` : (contractRoot.reason ?? "not checked")}
-              ok={contractRoot.matches}
+              label={simulatedChain ? "Monad root verification disabled" : "Internal Monad RPC verification"}
+              value={
+                simulatedChain
+                  ? "CHAIN_DISABLED=true or the batch is marked simulated. This receipt proves local commitments only."
+                  : chainVerification.verified
+                    ? `Receipt log and contract batchRoot matched ${shortHash(chainVerification.contractRoot ?? undefined)}`
+                    : chainVerification.reason
+              }
+              ok={chainVerification.verified}
+              statusText={simulatedChain ? "Simulated" : undefined}
             />
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            {txUrl ? (
+            {txLinks.map((link) => (
               <a
-                href={txUrl}
+                key={link.href}
+                href={link.href}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-md bg-[var(--monad-purple)] px-5 py-3 font-semibold text-white"
               >
-                Open tx <ExternalLink size={17} />
+                Open tx on {link.label} <ExternalLink size={17} />
               </a>
-            ) : null}
+            ))}
             <Link
               href={`/shipment/${sessionId}`}
               className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-5 py-3 font-semibold text-[var(--text-primary)]"
@@ -287,7 +275,11 @@ export default async function ReceiptPage({ params }: { params: Promise<{ sessio
               View shipment journey
             </Link>
           </div>
-          {explorer ? null : <p className="mt-4 text-xs text-[var(--text-secondary)]">Monad explorer URL is not configured.</p>}
+          {!simulatedChain && batch.tx_hash && txLinks.length === 0 ? (
+            <p className="mt-4 text-xs text-[var(--text-secondary)]">
+              No explorer URL is configured. Internal RPC verification remains the source of truth.
+            </p>
+          ) : null}
         </div>
       </section>
     </main>

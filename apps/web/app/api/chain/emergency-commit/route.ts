@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createPublicClient, createWalletClient, http, keccak256, parseAbi, stringToHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { buildMerkleProof, buildMerkleRoot, bytes32FromText, Hex } from "@monad-sentinel/shared";
-import { broadcastRealtime, getSupabaseAdmin } from "@/lib/supabase/server";
+import { broadcastRealtime, cleanupExpiredDemoData, getSupabaseAdmin } from "@/lib/supabase/server";
 
 const abi = parseAbi([
   "function commitBatch(bytes32 shipmentCommitment,uint64 sequence,bytes32 merkleRoot,uint32 sampleCount,uint16 maxRiskScore,uint16 combinedFlags,bytes32 dataAvailabilityHash,uint256 timeBucket)"
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ error: "SUPABASE_NOT_CONFIGURED" }, { status: 503 });
+  await cleanupExpiredDemoData();
 
   const { data, error } = await supabase
     .from("telemetry_events")
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
   await supabase
     .from("telemetry_batches")
     .update({
-      status: receipt.simulated ? "verified" : "committed",
+      status: receipt.simulated ? "simulated" : "committed",
       tx_hash: receipt.txHash,
       block_number: receipt.blockNumber ?? null,
       committed_at: committedAt
@@ -202,8 +203,8 @@ export async function POST(request: Request) {
     tx_hash: receipt.txHash,
     merkle_root: merkleRoot,
     selected_event_ids: eventIds,
-    verification_status: receipt.simulated ? "verified" : "unverified",
-    verified_at: receipt.simulated ? committedAt : null
+    verification_status: receipt.simulated ? "simulated" : "unverified",
+    verified_at: null
   });
 
   const batch = {
@@ -216,7 +217,7 @@ export async function POST(request: Request) {
     dataAvailabilityHash,
     timeBucket,
     txHash: receipt.txHash,
-    status: receipt.simulated ? "verified" : "committed",
+    status: receipt.simulated ? "simulated" : "committed",
     simulated: receipt.simulated
   };
   await broadcastRealtime(`session:${body.sessionId}:chain`, "chain.batch.committed", { type: "chain.batch.committed", batch });

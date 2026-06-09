@@ -180,7 +180,7 @@ async function processSession(supabase: SupabaseAny, sessionId: string) {
   await supabase
     .from("telemetry_batches")
     .update({
-      status: receipt.simulated ? "verified" : "committed",
+      status: receipt.simulated ? "simulated" : "committed",
       tx_hash: receipt.txHash,
       block_number: receipt.blockNumber ? Number(receipt.blockNumber) : null,
       committed_at: committedAt
@@ -213,8 +213,8 @@ async function processSession(supabase: SupabaseAny, sessionId: string) {
     tx_hash: receipt.txHash,
     merkle_root: merkleRoot,
     selected_event_ids: rows.map((event) => event.id),
-    verification_status: receipt.simulated ? "verified" : "unverified",
-    verified_at: receipt.simulated ? committedAt : null
+    verification_status: receipt.simulated ? "simulated" : "unverified",
+    verified_at: null
   });
 
   await supabase.channel(`session:${sessionId}:chain`).send({
@@ -232,7 +232,7 @@ async function processSession(supabase: SupabaseAny, sessionId: string) {
         dataAvailabilityHash,
         timeBucket,
         txHash: receipt.txHash,
-        status: receipt.simulated ? "verified" : "committed",
+        status: receipt.simulated ? "simulated" : "committed",
         simulated: receipt.simulated
       }
     }
