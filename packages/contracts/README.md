@@ -2,31 +2,102 @@
 
 Foundry project for Monad Sentinel evidence commitments.
 
-## Contract
+The contract stores compact public commitments only. It is not a telemetry database.
 
-`SentinelEvidenceLedger` stores compact proof-of-custody commitments:
+## Contract Role
 
-- shipment commitments
-- route and destination policy commitments
-- registered device events
-- batch Merkle roots
-- incident evidence events
-- delivery confirmation events
-- `batchRoot(shipmentCommitment, sequence)` for receipt verification
+```mermaid
+flowchart LR
+  Offchain[Encrypted off-chain telemetry]
+  Merkle[Merkle root]
+  Ledger[SentinelEvidenceLedger]
+  Receipt[Receipt verifier]
 
-It intentionally does not store raw GPS, motion packets, or arrays of telemetry.
+  Offchain --> Merkle
+  Merkle --> Ledger
+  Ledger -->|batchRoot(shipment, sequence)| Receipt
+```
 
-## Current Public API
+## `SentinelEvidenceLedger`
+
+Stores:
+
+- shipment authority
+- route policy commitment
+- destination commitment
+- Merkle root per shipment/sequence
+- incident evidence hash events
+- delivery evidence hash events
+
+Does not store:
+
+- raw GPS
+- route arrays
+- temperature readings
+- shock samples
+- product/customer names
+- device identities
+
+## Public API
 
 ```solidity
-createShipment(bytes32 shipmentCommitment, bytes32 routePolicyCommitment, bytes32 destinationCommitment)
-commitBatch(bytes32 shipmentCommitment, uint64 sequence, bytes32 merkleRoot, uint32 sampleCount, uint16 maxRiskScore, uint16 combinedFlags, bytes32 dataAvailabilityHash, uint256 timeBucket)
-commitIncident(bytes32 shipmentCommitment, bytes32 evidenceHash, uint16 riskScore, uint16 flags, uint64 batchSequence)
-confirmDelivery(bytes32 shipmentCommitment, bytes32 deliveryEvidenceHash, bytes32 receiverCommitment, uint64 batchSequence)
+createShipment(
+  bytes32 shipmentCommitment,
+  bytes32 routePolicyCommitment,
+  bytes32 destinationCommitment
+)
+
+commitBatch(
+  bytes32 shipmentCommitment,
+  uint64 sequence,
+  bytes32 merkleRoot,
+  uint32 sampleCount,
+  uint16 maxRiskScore,
+  uint16 combinedFlags,
+  bytes32 dataAvailabilityHash,
+  uint256 timeBucket
+)
+
+commitIncident(
+  bytes32 shipmentCommitment,
+  bytes32 evidenceHash,
+  uint16 riskScore,
+  uint16 flags,
+  uint64 batchSequence
+)
+
+confirmDelivery(
+  bytes32 shipmentCommitment,
+  bytes32 deliveryEvidenceHash,
+  bytes32 receiverCommitment,
+  uint64 batchSequence
+)
+
 batchRoot(bytes32 shipmentCommitment, uint64 sequence)
 ```
 
-Compatibility wrappers for older session-oriented tests are still present, but new app code should use shipment commitments.
+Compatibility wrappers for older session-oriented tests may exist, but new app code should use shipment commitments.
+
+## Verification Model
+
+```mermaid
+flowchart TB
+  Tx[commitBatch transaction]
+  Log[BatchCommitted event]
+  Root[batchRoot mapping]
+  DB[DB merkle_root]
+  Check{log root and contract root<br/>equal DB root?}
+  Verified[Verified]
+  Failed[Failed]
+
+  Tx --> Log
+  Tx --> Root
+  Log --> Check
+  Root --> Check
+  DB --> Check
+  Check -->|yes| Verified
+  Check -->|no| Failed
+```
 
 ## Commands
 
@@ -45,4 +116,11 @@ MONAD_RPC_URL=
 GATEWAY_PRIVATE_KEY=
 ```
 
-After deployment, set `NEXT_PUBLIC_CONTRACT_ADDRESS` for the web app and Chain Agent.
+After deployment, configure:
+
+```txt
+NEXT_PUBLIC_CONTRACT_ADDRESS=
+MONAD_RPC_URL=
+CHAIN_DISABLED=false
+NEXT_PUBLIC_CHAIN_MODE=real
+```

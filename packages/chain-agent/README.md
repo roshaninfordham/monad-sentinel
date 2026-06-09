@@ -1,16 +1,19 @@
 # Chain Agent
 
-Long-running worker that turns verified telemetry rows into Monad evidence batches.
+Long-running worker that turns verified off-chain telemetry into Monad evidence batches.
+
+The Chain Agent is the production path for batching. The serverless emergency commit endpoint mirrors the same proof tables for demo safety, but it is not a replacement for a worker with retry and nonce management.
 
 ## Responsibilities
 
 1. Poll unbatched `telemetry_events`.
-2. Group by session.
-3. Build Merkle roots and proofs.
-4. Insert `telemetry_batches`.
-5. Submit `commitBatch(shipmentCommitment, sequence, merkleRoot, ...)` to Monad when enabled.
-6. Update batch/event rows with tx status.
-7. Broadcast `chain.batch.committed` to the dashboard.
+2. Group by session/shipment.
+3. Sort events deterministically.
+4. Build Merkle roots and per-event proofs.
+5. Insert `telemetry_batches` and `merkle_proofs`.
+6. Submit `commitBatch` to Monad when real chain mode is enabled.
+7. Store tx hash, block, and status.
+8. Broadcast `chain.batch.committed`.
 
 ## Flow
 
@@ -21,13 +24,49 @@ sequenceDiagram
   participant Monad as SentinelEvidenceLedger
   participant RT as Supabase Realtime
 
-  Agent->>DB: read unbatched telemetry_events
-  Agent->>Agent: build Merkle root + proofs
-  Agent->>DB: insert telemetry_batches + merkle_proofs
-  Agent->>Monad: commitBatch(shipmentCommitment, merkleRoot)
-  Monad-->>Agent: tx receipt
-  Agent->>DB: mark committed
-  Agent->>RT: chain.batch.committed
+  loop every interval
+    Agent->>DB: read unbatched telemetry_events
+    Agent->>Agent: build Merkle root + proofs
+    Agent->>DB: insert telemetry_batches + merkle_proofs
+    alt CHAIN_DISABLED=false
+      Agent->>Monad: commitBatch(shipmentCommitment, root, metadata)
+      Monad-->>Agent: tx receipt
+      Agent->>DB: update tx hash, block, committed status
+    else simulated
+      Agent->>DB: mark batch simulated
+    end
+    Agent->>RT: broadcast chain.batch.committed
+  end
+```
+
+## Chain Modes
+
+```txt
+CHAIN_DISABLED=true
+  simulated batch only
+  no explorer links
+  receipt verification returns mode=simulated, verified=false
+
+CHAIN_DISABLED=false
+  requires Monad RPC
+  requires deployed contract
+  requires gateway private key
+  receipt verification can read contract batchRoot
+```
+
+## Trust Role
+
+The Chain Agent does not create truth by itself. It turns already-ingested signed evidence rows into a Merkle root and anchors that root.
+
+```mermaid
+flowchart LR
+  Event[Signed encrypted telemetry row]
+  Leaf[leafHash]
+  Root[Merkle root]
+  Chain[Monad commitBatch]
+  Verify[Receipt verification]
+
+  Event --> Leaf --> Root --> Chain --> Verify
 ```
 
 ## Run
@@ -36,9 +75,4 @@ sequenceDiagram
 pnpm agent:dev
 ```
 
-With missing Supabase env, the worker waits instead of crashing.
-
-## Chain Modes
-
-- `CHAIN_DISABLED=true`: simulated tx hashes, clearly labeled.
-- `CHAIN_DISABLED=false`: requires Monad RPC, gateway private key, and deployed contract address.
+If Supabase or Monad env vars are missing, the worker should wait or simulate clearly instead of presenting fake chain proof.

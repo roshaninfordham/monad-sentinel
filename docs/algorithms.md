@@ -1,48 +1,47 @@
 # Algorithms
 
-This document explains the deterministic logic used by Monad Sentinel. The LLM layer is optional; these rules keep the demo explainable without an AI API key.
+Monad Sentinel is designed so judges can ask how the system works and receive deterministic answers. LLM narration is optional; the core classifications and proofs do not depend on model output.
 
-## Risk Classifier
+## Risk Classification
 
-Phone shaking is not treated as theft by itself. It is a **shock event**. Theft requires context such as route deviation, unauthorized dwell, seal break, or tracker silence.
+A phone shake is a **shock event**, not automatically theft.
 
 ```mermaid
 flowchart TB
-  T[Telemetry event] --> Motion[Compute motion features]
-  T --> Context[Read context signals]
-  Motion --> Shock{Shock or jerk high?}
-  Context --> Route{Route deviation?}
-  Context --> Stop{Unauthorized stop?}
-  Context --> Seal{Seal opened/broken?}
-  Context --> Cold{Cold-chain excursion?}
-  Context --> Heartbeat{Heartbeat lost?}
+  Event[Telemetry event]
+  Motion[Motion features<br/>magnitude · jerk · shock energy]
+  Context[Context features<br/>route · dwell · seal · heartbeat · temp]
+  Shock{Shock high?}
+  Route{Route deviation?}
+  Dwell{Unauthorized dwell?}
+  Seal{Seal / light event?}
+  Silence{Heartbeat lost?}
+  Temp{Cold-chain exposure?}
+  Bump[Road bump<br/>shock only]
+  Handling[Mishandling<br/>repeated shock or temp fluctuation]
+  Theft[Likely theft<br/>multiple custody signals]
+  Cold[Cold-chain risk]
 
-  Shock -->|only shock| Bump[Road bump<br/>risk usually < 30]
-  Shock -->|repeated/high energy| Handling[Mishandling<br/>risk 30-79]
-  Route --> Theft[Likely theft<br/>risk 80-100]
-  Stop --> Theft
+  Event --> Motion --> Shock
+  Event --> Context
+  Context --> Route
+  Context --> Dwell
+  Context --> Seal
+  Context --> Silence
+  Context --> Temp
+  Shock -->|yes, no context breach| Bump
+  Shock -->|repeated / high energy| Handling
+  Route --> Theft
+  Dwell --> Theft
   Seal --> Theft
-  Heartbeat --> Theft
-  Cold --> ColdChain[Cold-chain risk]
+  Silence --> Theft
+  Temp --> Cold
+  Handling --> Theft
 ```
 
-Implementation: `packages/shared/src/index.ts` in `classifyCustodyRisk()`.
+Current shared implementation: `packages/shared/src/index.ts`.
 
-Risk additions:
-
-```txt
-shockEnergy > threshold           +25
-repeated / high-energy shock      +15
-large orientation change          +10
-route deviation > 25m             +35
-unauthorized dwell >= 180s        +35
-seal break                        +50
-heartbeat lost                    +30
-cold-chain exposure               +25 to +45
-manual theft simulation           +55
-```
-
-Severity:
+Severity bands:
 
 ```txt
 0-29    normal
@@ -54,6 +53,8 @@ Severity:
 
 ## Motion Features
 
+For each motion window:
+
 ```txt
 accelerationMagnitude = sqrt(ax^2 + ay^2 + az^2)
 jerk                  = |a_t - a_(t-1)| / deltaSeconds
@@ -62,75 +63,121 @@ shockEnergy           = sum(max(0, accelerationMagnitude - baseline)^2 * deltaSe
 
 ```mermaid
 flowchart LR
-  Samples[Motion samples] --> Mag[Acceleration magnitude]
-  Mag --> Jerk[Jerk peak]
-  Mag --> Energy[Shock energy]
-  Jerk --> Risk[Risk classifier]
-  Energy --> Risk
+  Samples[Accelerometer samples]
+  Magnitude[Acceleration magnitude]
+  Jerk[Jerk peak]
+  Energy[Shock energy]
+  Classifier[Risk classifier]
+
+  Samples --> Magnitude
+  Magnitude --> Jerk
+  Magnitude --> Energy
+  Jerk --> Classifier
+  Energy --> Classifier
 ```
 
 Demo scenarios:
 
-- **Bump:** shock only, no route deviation, no seal break.
-- **Mishandling:** repeated shock or cold-chain fluctuation, no custody breach.
-- **Theft:** shock plus route deviation, unauthorized dwell, seal break, or heartbeat loss.
+- **Bump:** shock only; no route deviation, unauthorized dwell, seal break, or silence.
+- **Mishandling:** repeated shocks or temperature fluctuation; inspect cargo.
+- **Likely theft:** shock plus route deviation, unauthorized stop, seal break, heartbeat loss, or missing handoff.
 
-## Geofence and Route Deviation
+## Distance and Route Deviation
 
-Current hackathon mode uses indoor spatialization and simple distance checks. Production route validation should use PostGIS route corridors and H3 cell commitments.
+Haversine distance is used for lightweight checks and demos:
+
+```txt
+a = sin²(deltaLat / 2) + cos(lat1) * cos(lat2) * sin²(deltaLng / 2)
+c = 2 * atan2(sqrt(a), sqrt(1-a))
+distanceMeters = earthRadiusMeters * c
+```
 
 ```mermaid
 flowchart TB
-  GPS[Private GPS point] --> Authorized{Authorized user?}
-  Authorized -->|yes| Map[Full route map]
-  GPS --> H3[H3 cell / corridor bucket]
-  H3 --> Policy[Route policy commitment]
-  Policy --> Risk[Route-deviation risk]
+  Point[Private GPS point]
+  Planned[Planned corridor / geofence]
+  Distance[Distance to corridor]
+  Threshold{distance > allowed meters?}
+  Normal[On route]
+  Deviation[Route deviation risk]
+
+  Point --> Distance
+  Planned --> Distance
+  Distance --> Threshold
+  Threshold -->|no| Normal
+  Threshold -->|yes| Deviation
 ```
 
-Production-ready approach:
+Production route validation path:
 
-```sql
-ST_DWithin(current_point, planned_corridor, allowed_distance_meters)
+- PostGIS `ST_DWithin` for distance-to-corridor and destination geofence checks.
+- H3 cells for privacy-preserving corridor commitments.
+- OSRM or Valhalla for map matching noisy GPS traces to roads.
+
+## Journey Map Layers
+
+The MapLibre journey view renders authorized private route data, not public chain data.
+
+```mermaid
+flowchart LR
+  DB[(Encrypted / authorized journey data)]
+  Decode[Authorized route view builder]
+  OSM[OSM raster base]
+  Layers[MapLibre overlay sources]
+  UI[/shipment/:shipmentId]
+
+  DB --> Decode
+  Decode --> Layers
+  OSM --> UI
+  Layers --> UI
 ```
 
-Privacy approach:
+Current overlays:
 
-```txt
-exact GPS                encrypted off-chain
-route corridor cells     committed as routePolicyCommitment
-public chain             only opaque commitment
-```
+- planned route corridor
+- actual route
+- unauthorized deviation route
+- destination geofence
+- stop/dwell circles
+- shock and temperature incident markers
+- Monad batch anchor markers
+- current position marker
 
 ## Stop and Dwell Detection
 
-A stop is created when a rolling window stays inside a radius for long enough.
+A stop is a rolling cluster of points that remains within a radius for a minimum duration.
 
 ```mermaid
 flowchart TB
-  Window[Rolling GPS window] --> Centroid[Compute centroid]
-  Centroid --> Radius{All points within radius?}
-  Radius -->|no| Moving[Still moving]
-  Radius -->|yes| Dwell{Duration >= threshold?}
-  Dwell -->|no| Moving
-  Dwell -->|yes| Stop[Create StopSegment]
-  Stop --> Auth{Authorized checkpoint?}
-  Auth -->|yes| Normal[Authorized dwell]
-  Auth -->|no| Alert[Unauthorized stop risk]
+  Window[Rolling point window]
+  Centroid[Compute centroid]
+  Radius{All points within radius?}
+  Duration{Duration above threshold?}
+  Authorized{Inside approved checkpoint?}
+  Moving[Movement segment]
+  Stop[Stop segment]
+  Alert[Unauthorized dwell risk]
+
+  Window --> Centroid --> Radius
+  Radius -->|no| Moving
+  Radius -->|yes| Duration
+  Duration -->|no| Moving
+  Duration -->|yes| Stop
+  Stop --> Authorized
+  Authorized -->|yes| Stop
+  Authorized -->|no| Alert
 ```
 
-Default production starting point:
+Starting policy:
 
 ```txt
-radius = 30 meters
-minimum dwell = 180 seconds
+dwell radius: 30 meters
+minimum dwell: 180 seconds
 ```
-
-Implementation: `detectStopSegment()` in `packages/shared/src/index.ts`.
 
 ## Cold-Chain Exposure
 
-Temperature compliance should not be a single threshold crossing. The model uses degree-minutes:
+Temperature compliance is based on exposure, not one noisy reading.
 
 ```txt
 exposureDegreeMinutes =
@@ -138,34 +185,41 @@ exposureDegreeMinutes =
 ```
 
 ```mermaid
-flowchart LR
-  Readings[Temperature readings] --> Window[Pairwise time windows]
-  Window --> Excess[Temperature excess above policy]
-  Excess --> Exposure[Degree-minutes]
-  Exposure --> Severity{Policy limit exceeded?}
-  Severity -->|no| Watch[Minor excursion]
-  Severity -->|yes| Critical[Quality review required]
+flowchart TB
+  Readings[Temperature readings]
+  Windows[Pairwise time windows]
+  Excess[Excess above policy]
+  Exposure[Degree-minutes]
+  Limit{Policy limit exceeded?}
+  Minor[Minor excursion]
+  Critical[Quality review required]
+
+  Readings --> Windows --> Excess --> Exposure --> Limit
+  Limit -->|no| Minor
+  Limit -->|yes| Critical
 ```
 
-For a pharma demo policy:
+For a pharma demo:
 
 ```txt
 allowed range: 2 C to 8 C
-minor excursion: brief reading above 8 C
-critical excursion: sustained exposure degree-minutes
+brief 8.3 C spike: warning
+sustained 11 C exposure: critical excursion
 ```
 
 ## Delivery Confirmation
 
-GPS alone does not prove delivery. Sentinel uses a delivery proof policy.
+Delivery is a policy state machine, not a single GPS point.
 
 ```mermaid
-flowchart TB
-  Geofence[Destination geofence entered] --> Dwell[Dwell threshold reached]
-  Dwell --> Receiver[Receiver signs handoff]
-  Receiver --> Condition[Final seal/temp condition check]
-  Condition --> Batch[Final evidence batch committed]
-  Batch --> Delivered[Delivered + verified]
+stateDiagram-v2
+  [*] --> InTransit
+  InTransit --> EnteredDestination: destination geofence entered
+  EnteredDestination --> DwellSatisfied: dwell threshold reached
+  DwellSatisfied --> ReceiverSigned: receiver handoff signature
+  ReceiverSigned --> FinalCondition: final seal/temp check passed
+  FinalCondition --> FinalBatch: final evidence batch committed
+  FinalBatch --> DeliveredVerified
 ```
 
 Delivery evidence:
@@ -183,4 +237,67 @@ deliveryEvidence = {
 }
 ```
 
-The contract exposes `DeliveryConfirmed` for the production path. The current UI shows the delivery proof steps on `/shipment/[shipmentId]`.
+The journey page shows this policy even when the final production `DeliveryConfirmed` transaction is not enabled.
+
+## Hashing and Merkle Proofs
+
+The proof path is deterministic:
+
+```mermaid
+flowchart TB
+  Payload[Canonical payload]
+  Salt[Random salt]
+  Cipher[Ciphertext]
+  Signature[Device signature]
+  Risk[Risk flags]
+  Leaf[leafHash]
+  Tree[Merkle tree]
+  Proof[Merkle proof]
+  Root[Merkle root]
+  Monad[Monad batchRoot]
+
+  Payload --> Salted[payloadCommitment]
+  Salt --> Salted
+  Cipher --> CipherHash[ciphertextHash]
+  Salted --> Leaf
+  CipherHash --> Leaf
+  Signature --> Leaf
+  Risk --> Leaf
+  Leaf --> Tree
+  Tree --> Proof
+  Tree --> Root
+  Root --> Monad
+```
+
+Why not hash raw GPS:
+
+```txt
+H(lat || lng || timestamp) is guessable.
+H(randomSalt || canonicalPayload) is not useful without the salt.
+H(ciphertext) proves the encrypted blob was not changed.
+MerkleRoot(leafHash[]) proves the event was included in the committed batch.
+```
+
+## Agent Workflow
+
+Agents are separated by responsibility.
+
+```mermaid
+flowchart LR
+  Telemetry[Telemetry Agent<br/>phone/client collection]
+  Risk[Risk Agent<br/>deterministic scoring]
+  Chain[Chain Agent<br/>batch, submit, verify]
+  Narrator[Narrator Agent<br/>concise incident summary]
+  Action[Action Agent<br/>typed proposals]
+  Guard[Guardrails<br/>no keys, no direct writes]
+  Log[agent_actions log]
+
+  Telemetry --> Risk
+  Risk --> Chain
+  Risk --> Narrator
+  Narrator --> Action
+  Action --> Guard
+  Guard --> Log
+```
+
+The LLM layer is allowed to explain, summarize, and propose typed actions. It is not allowed to hold private keys or directly mutate chain/database state.

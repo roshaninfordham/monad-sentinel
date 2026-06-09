@@ -1,34 +1,59 @@
 # Shared Protocol Package
 
-`@monad-sentinel/shared` contains protocol code used by the web app and Chain Agent.
+`@monad-sentinel/shared` contains deterministic protocol and algorithm code shared by the web app and Chain Agent.
 
-## Includes
+## Responsibilities
 
-- Zod schemas for telemetry.
+- Zod schemas for telemetry and realtime events.
 - Canonical JSON serialization.
 - Payload hashing with `keccak256`.
-- EIP-712 typed data generation and signer recovery.
-- Private evidence commitments and leaf hashing for Merkle batches.
-- Merkle root, proof generation, and proof verification.
-- Deterministic risk scoring and custody event classification.
-- Motion, stop/dwell, distance, and cold-chain exposure helpers.
-- Realtime event view types.
+- EIP-712 typed data definitions and signer recovery.
+- Private evidence leaf hashing.
+- Merkle root/proof generation and proof verification.
+- Deterministic risk classification.
+- Haversine distance helpers.
+- Stop/dwell detection helpers.
+- Motion/shock feature helpers.
+- Cold-chain exposure helpers.
 
-## Protocol Sketch
+## Protocol Role
 
 ```mermaid
 flowchart LR
-  Payload[TelemetryPayload] --> Canonical[canonicalJson]
-  Canonical --> PayloadHash[payloadHash]
-  PayloadHash --> Signature[EIP-712 signature]
-  Payload --> Commitment[Salted payload commitment]
-  Payload --> Cipher[Encrypted payload hash]
-  Commitment --> EventHash[eventHash]
-  Cipher --> EventHash
-  Signature --> Leaf[private evidence leafHash]
-  EventHash --> Leaf
-  Leaf --> Root[Merkle root]
-  Root --> Monad[SentinelEvidenceLedger]
+  Payload[Telemetry payload]
+  Canon[canonicalJson]
+  Hash[payloadHash]
+  Signature[EIP-712 signature]
+  Risk[Risk score + flags]
+  Leaf[Private evidence leaf]
+  Merkle[Merkle root + proof]
+
+  Payload --> Canon --> Hash --> Signature
+  Payload --> Risk
+  Signature --> Leaf
+  Risk --> Leaf
+  Leaf --> Merkle
+```
+
+## Deterministic Algorithms
+
+The package keeps the demo explainable without a model API:
+
+- shock is not theft by itself
+- route deviation and dwell are separate custody signals
+- temperature risk uses exposure over time
+- delivery confirmation is a multi-step policy
+
+```mermaid
+flowchart TB
+  Telemetry[Telemetry]
+  Motion[Motion features]
+  Context[Route / dwell / seal / heartbeat / temp]
+  Classifier[Custody risk classifier]
+  Output[normal / watch / suspicious / tamper / critical]
+
+  Telemetry --> Motion --> Classifier
+  Telemetry --> Context --> Classifier --> Output
 ```
 
 ## Test

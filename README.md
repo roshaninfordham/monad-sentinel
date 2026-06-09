@@ -1,80 +1,244 @@
 # Monad Sentinel
 
-**Stop trusting GPS. Prove custody.**
+**Make logistics telemetry provable without making it public.**
 
-Monad Sentinel is a privacy-preserving proof-of-custody layer for pharma, medical, food, FMCG, luxury, and high-value logistics. A presenter starts a session and shows one QR code. Audience phones join as temporary signed sensor witnesses, stream browser telemetry, trigger shock/tamper scenarios, and have encrypted evidence leaves batched into Merkle roots committed to Monad.
+Monad Sentinel is the privacy-preserving evidence layer for logistics IoT and shipment-visibility platforms. It is not another GPS tracker. Existing platforms already collect GPS, temperature, shock, seal, battery, handoff, and EPCIS-style events; Sentinel turns those events into encrypted, signed, hash-chained, Merkle-batched evidence receipts anchored to Monad.
 
-The product does **not** publish raw GPS on-chain. Raw telemetry is encrypted off-chain. Devices sign events. Events are hash-linked. Monad stores compact Merkle roots and metadata so journey history cannot be silently rewritten.
+The core rule is simple:
 
-## What It Demonstrates
+```txt
+Private telemetry every second.
+Public proof roots every batch.
+No raw route, customer, product, or device identity on-chain.
+```
 
-- QR-powered phone onboarding with no wallet popup and no testnet tokens for the audience.
-- Ephemeral local device keys that sign EIP-712 telemetry.
-- Realtime command center with indoor command room, geo map, globe mode, evidence rail, incident feed, sound, and 50-device simulation.
-- Private Evidence Protocol: salted payload commitments, AES-GCM encrypted evidence, ciphertext hashes, hash-linked events, and Merkle batch roots.
-- Deterministic risk agents for bump, mishandling, likely theft, route deviation, cold-chain excursion, and delivery evidence.
-- Supabase/Postgres as the app state and realtime layer.
-- Monad Testnet smart contract as the public evidence anchor.
-- Judge-facing receipts and journey views that explain what is public, private, and verified.
+## Demo Privacy Promise
 
-## Architecture
+For live audience demos, participant phone telemetry is treated as temporary demo data:
+
+- raw/encrypted phone telemetry is collected only for the live session
+- demo sessions expire after **30 minutes** and the API opportunistically deletes expired rows
+- participants can use indoor spatialization instead of real GPS
+- simulated witnesses can fully run the pitch if nobody shares location
+- simulated mode never pretends to be real Monad proof
+
+The permanent artifact is the proof concept: signed events, salted commitments, Merkle roots, and receipts. The demo should not retain audience location history after the presentation window.
+
+## What Sentinel Proves
+
+- A sensor event existed at a given time.
+- A device key signed the event.
+- The event was linked to the prior event in the journey.
+- The raw payload was encrypted and committed with salted hashes.
+- The event was included in a Merkle batch.
+- The batch root was anchored to Monad when real chain mode is enabled.
+- A receipt can selectively reveal and verify one event without exposing the full shipment history.
+
+## Product Positioning
 
 ```mermaid
 flowchart LR
-  Phone[Audience Phone<br/>GPS + motion + ephemeral signer]
-  API[Next.js API<br/>validate + recover signer + score risk]
-  DB[(Supabase Postgres<br/>encrypted events + proofs)]
-  RT[Supabase Realtime<br/>Broadcast + Presence]
-  Dash[Command Center<br/>map incidents evidence rail]
-  Agent[Chain Agent<br/>Merkle batches + Monad txs]
-  Monad[(Monad Testnet<br/>SentinelEvidenceLedger)]
-  Receipt[Receipt Page<br/>signature + proof + batchRoot]
+  Platforms[Existing logistics platforms<br/>GPS · temperature · shock · seal · scans]
+  Sentinel[Monad Sentinel<br/>privacy-preserving evidence engine]
+  Customers[Authorized customers<br/>journey map · incidents · receipts]
+  Auditors[Auditors / insurers<br/>selective proof verification]
+  Monad[(Monad<br/>opaque root commitments)]
 
-  Phone -->|signed telemetry batch| API
-  API -->|durable rows| DB
-  API -->|telemetry + alerts| RT
-  RT --> Dash
-  DB -->|unbatched leaf hashes| Agent
-  Agent -->|commitBatch| Monad
-  Agent -->|tx + batch status| DB
-  Agent -->|chain.batch.committed| RT
-  Monad --> Receipt
-  DB --> Receipt
+  Platforms -->|sensor feeds / API / EPCIS events| Sentinel
+  Sentinel -->|encrypted private journey| Customers
+  Sentinel -->|selective reveal receipt| Auditors
+  Sentinel -->|Merkle roots + compact metadata| Monad
+  Monad -->|batchRoot verification| Auditors
 ```
 
-Monad is used for compact evidence commitments, not raw GPS storage. Supabase handles high-frequency room state, encrypted telemetry envelopes, Merkle proofs, and journey visualization.
+Existing visibility platforms help customers monitor. Sentinel helps them prove.
 
-## Privacy Model
+## Screenshots
+
+These screenshots are kept in [`docs/screenshots`](docs/screenshots) so judges can understand the product without running the realtime demo.
+
+| Screen | Purpose |
+| --- | --- |
+| ![Landing page](docs/screenshots/01-landing-privacy-evidence-layer.png) | New positioning: evidence layer, not another tracker. |
+| ![Command center](docs/screenshots/02-dashboard-command-center.png) | Live command center with QR, swarm, evidence rail, and presenter controls. |
+| ![Mobile join](docs/screenshots/03-mobile-join-screen.png) | Phone-as-sensor onboarding. |
+| ![Mobile permissions](docs/screenshots/04-mobile-permission-ceremony.png) | Explicit location and motion permission ceremony. |
+| ![Journey map](docs/screenshots/05-shipment-journey-map.png) | Authorized MapLibre journey view with route, stops, incidents, and delivery policy. |
+| ![Simulated receipt guardrail](docs/screenshots/06-simulated-proof-receipt-guardrails.png) | Simulated-chain receipt guardrails: no fake explorer link, no fake Monad verification. |
+| ![Selective reveal receipt](docs/screenshots/07-sample-selective-reveal-receipt.png) | Receipt explanation for signature, Merkle proof, and root verification. |
+| ![Device inspector](docs/screenshots/08-device-detail-inspector.png) | Per-witness source-to-destination history, privacy state, incidents, and latest batch proof. |
+
+Real Monad transaction screenshots should be added only after running `pnpm sentinel:launch --prod --real-chain` with a deployed contract, funded gateway wallet, and RPC-verified `BatchCommitted` receipt. Do not fake this screenshot from simulated hashes.
+
+## System Overview
+
+```mermaid
+flowchart TB
+  subgraph Clients
+    Landing[Landing page]
+    Dashboard[Command center dashboard]
+    Mobile[Mobile sensor witness]
+    Journey[Shipment journey map]
+    Receipt[Evidence receipt]
+  end
+
+  subgraph Web["Next.js on Vercel"]
+    Sessions[/api/sessions/]
+    Telemetry[/api/telemetry/batch/]
+    Verify[/api/chain/verify-batch/]
+    Emergency[/api/chain/emergency-commit/]
+    Narrate[/api/agent/narrate/]
+  end
+
+  subgraph Supabase
+    DB[(Postgres<br/>encrypted events + proofs)]
+    RT[Realtime Broadcast]
+    Presence[Presence]
+  end
+
+  subgraph Worker
+    Agent[Chain Agent<br/>Merkle batcher + submitter]
+  end
+
+  subgraph Monad
+    Ledger[SentinelEvidenceLedger]
+  end
+
+  Landing --> Sessions
+  Mobile --> Telemetry
+  Telemetry --> DB
+  Telemetry --> RT
+  Telemetry --> Presence
+  Dashboard --> RT
+  Dashboard --> Emergency
+  Journey --> DB
+  Receipt --> Verify
+  Verify --> DB
+  Verify --> Ledger
+  Agent --> DB
+  Agent --> Ledger
+  Agent --> RT
+  Narrate --> Dashboard
+```
+
+Supabase is the encrypted data availability and realtime layer. Monad is the public integrity anchor. The database can make data queryable, but it is not the trust root.
+
+## Private Evidence Protocol
 
 ```mermaid
 flowchart LR
-  Raw[Raw GPS / temp / shock] --> Encrypt[Encrypt off-chain]
-  Encrypt --> Hash[Payload + ciphertext commitments]
-  Hash --> Merkle[Merkle batch]
-  Merkle --> Monad[Monad root commitment]
-  Encrypt --> Dashboard[Authorized journey dashboard]
-  Monad --> Receipt[Selective reveal receipt]
-  Hash --> Receipt
+  Raw[Raw telemetry<br/>GPS temp shock seal battery]
+  Canon[Canonical JSON]
+  Encrypt[AES-GCM encrypted payload]
+  Commit[Salted payload commitment<br/>ciphertext hash]
+  Sign[EIP-712 device signature]
+  Chain[previousEventHash]
+  Leaf[leafHash]
+  Merkle[Merkle root]
+  Monad[Monad commitBatch]
+  Receipt[Selective reveal receipt]
+
+  Raw --> Canon
+  Canon --> Encrypt
+  Canon --> Commit
+  Commit --> Leaf
+  Sign --> Leaf
+  Chain --> Leaf
+  Leaf --> Merkle
+  Merkle --> Monad
+  Merkle --> Receipt
+  Sign --> Receipt
+  Encrypt --> Receipt
 ```
 
-Public on Monad:
+Monad stores only opaque commitments:
 
-- shipment commitment
-- Merkle root
-- batch sequence
-- sample count
-- combined risk flags
-- data availability hash
-- timestamp bucket
-- tx hash
+- `shipmentCommitment`
+- `batchSequence`
+- `merkleRoot`
+- `sampleCount`
+- `maxRiskScore`
+- `combinedFlags`
+- `dataAvailabilityHash`
+- `timeBucket`
 
-Private off-chain:
+Monad does not store raw GPS, route geometry, customer identity, product identity, temperature history, shock waveforms, or device identity.
 
-- exact route and GPS
-- temperature and shock timeline
-- device identity
-- product/customer identity
-- handoff details
+## Current User Flows
+
+### Live Demo
+
+```mermaid
+sequenceDiagram
+  participant Presenter
+  participant Dashboard
+  participant Phone
+  participant API
+  participant Batch as Chain Agent / Emergency Commit
+  participant Monad
+
+  Presenter->>Dashboard: Create session
+  Dashboard->>Phone: Shows tokenized QR
+  Phone->>Phone: Join session + create ephemeral key
+  Phone->>Phone: Enable location, enable motion, start beacon
+  Phone->>API: POST encrypted signed telemetry
+  API->>Dashboard: Broadcast telemetry.accepted
+  Presenter->>Dashboard: Trigger bump / mishandling / theft
+  API->>Dashboard: Broadcast risk.alert
+  Batch->>Batch: Build Merkle tree
+  alt Real chain mode
+    Batch->>Monad: commitBatch(root)
+    Batch->>Dashboard: Batch submitted / included / root verified
+  else Simulated mode
+    Batch->>Dashboard: Simulated batch, no explorer link
+  end
+```
+
+### Mobile Permission Ceremony
+
+The mobile page does not silently fall back. It asks for browser capabilities from direct user gestures:
+
+```mermaid
+stateDiagram-v2
+  [*] --> JoinSession
+  JoinSession --> EnableLocation: user taps Join
+  EnableLocation --> EnableMotion: geolocation granted
+  EnableLocation --> IndoorFallback: denied / timeout / unavailable
+  IndoorFallback --> EnableMotion: user accepts spatialization
+  EnableMotion --> StartBeacon: motion granted or unavailable with fallback
+  EnableMotion --> ManualShockFallback: denied
+  ManualShockFallback --> StartBeacon
+  StartBeacon --> Streaming: user taps Start Secure Beacon
+  Streaming --> ShockEvent: shake or manual shock
+```
+
+## Chain Verification Truth
+
+The explorer is not the source of truth. `/api/chain/verify-batch` verifies batches internally:
+
+```mermaid
+flowchart TB
+  Batch[telemetry_batches row]
+  Mode{CHAIN_DISABLED<br/>or simulated status?}
+  Receipt[eth_getTransactionReceipt]
+  Logs[Decode BatchCommitted log]
+  Root[Read contract.batchRoot]
+  Compare{event root + contract root<br/>match DB root?}
+  Verified[Verified]
+  Sim[Simulated receipt only]
+  Failed[Pending or failed verification]
+
+  Batch --> Mode
+  Mode -->|yes| Sim
+  Mode -->|no| Receipt
+  Receipt --> Logs
+  Logs --> Root
+  Root --> Compare
+  Compare -->|yes| Verified
+  Compare -->|no| Failed
+```
+
+When `CHAIN_DISABLED=true` or `NEXT_PUBLIC_CHAIN_MODE=simulated`, the UI disables Monad explorer links and never displays simulated hashes as real Monad proof.
 
 ## Quick Start
 
@@ -83,62 +247,45 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:3000`, click **Start Live Custody Swarm**, then use the dashboard demo controls:
+Open `http://localhost:3000`, launch a demo session, and use the dashboard controls:
 
-- **Spawn 50** to fill the command center.
-- **Bump**, **Mishandling**, and **Theft** to show the risk model does not equate every shake with theft.
-- **Cold breach** to simulate cargo temperature risk.
-- **Emergency batch** to create a simulated evidence block.
-- Open `/s/[sessionId]` on a phone to test the mobile witness flow.
-- Open `/shipment/[sessionId]` to see the authorized journey map and delivery proof policy.
+- **Spawn 50** creates a live witness swarm.
+- **Bump** shows shock without custody breach.
+- **Mishandling** shows repeated handling risk.
+- **Theft** combines shock with simulated route deviation / unauthorized dwell / seal risk.
+- **Cold breach** simulates temperature exposure.
+- **Movement / deviation controls** let the presenter show threshold behavior even if indoor GPS is poor.
+- **Emergency batch** creates a Merkle batch; in simulated mode it is clearly labeled.
+- `/shipment/[sessionId]` opens the authorized journey map.
+- `/receipt/[sessionId]/[batchId]` opens the evidence receipt.
 
-The app runs in local demo mode without Supabase or Monad credentials.
-
-## Public QR Behavior
-
-Set `NEXT_PUBLIC_APP_URL` in production:
-
-```txt
-NEXT_PUBLIC_APP_URL=https://your-vercel-domain.app
-```
-
-The dashboard QR uses that value first. This prevents the projector QR from pointing to `localhost` after deployment.
-
-## Project Layout
-
-```txt
-apps/web                 Next.js App Router frontend and API routes
-packages/shared          Telemetry schema, EIP-712, hashing, risk, Merkle helpers
-packages/contracts       Solidity SentinelEvidenceLedger contract
-packages/chain-agent     Long-running Merkle batch and Monad commit worker
-supabase/migrations      Postgres schema for sessions, devices, telemetry, proofs
-docs                     Architecture, protocol, algorithms, decisions, runbook
-```
+If real phones deny location or the room has poor GPS, use the explicit **indoor demo spatialization** fallback on the phone and the dashboard simulation controls. The product claim remains accurate: the phone is a sensor emulator, while the proof protocol is the core demo.
 
 ## Scripts
 
 ```bash
-pnpm dev               # Next.js app
-pnpm build             # production build
-pnpm test              # shared + chain-agent TypeScript checks
-pnpm agent:dev         # batch worker
-pnpm contracts:build   # Foundry build, requires forge
-pnpm contracts:test    # Foundry tests, requires forge
-pnpm contracts:deploy  # deploy SentinelEvidenceLedger to Monad
-pnpm sentinel:init     # print one-time setup checklist
-pnpm sentinel:verify   # run app checks and build
-pnpm sentinel:launch   # local launch helper
-pnpm sentinel:launch --prod # Vercel launch helper with QR output
+pnpm dev                         # Next.js app
+pnpm build                       # production build
+pnpm test                        # TypeScript/unit checks
+pnpm agent:dev                   # chain-agent worker
+pnpm contracts:build             # Foundry build, requires forge
+pnpm contracts:test              # Foundry tests, requires forge
+pnpm contracts:deploy            # deploy SentinelEvidenceLedger
+pnpm sentinel:init               # one-time setup checklist
+pnpm sentinel:verify             # test + build + optional contracts
+pnpm sentinel:doctor             # cloud/local health checks
+pnpm sentinel:launch             # local launch helper
+pnpm sentinel:launch --prod      # Vercel deployment + live session QR
+pnpm sentinel:launch --prod --real-chain
 ```
 
 ## Environment
-
-Copy `.env.example` to `.env.local` for local development.
 
 Minimum local demo:
 
 ```txt
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_CHAIN_MODE=simulated
 NEXT_PUBLIC_CHAIN_DISABLED=true
 CHAIN_DISABLED=true
 ```
@@ -151,38 +298,25 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SECRET_KEY=
 NEXT_PUBLIC_MONAD_CHAIN_ID=10143
-NEXT_PUBLIC_MONAD_EXPLORER_URL=
 NEXT_PUBLIC_CONTRACT_ADDRESS=
 MONAD_RPC_URL=
-MONAD_WS_URL=
 GATEWAY_PRIVATE_KEY=
 CHAIN_DISABLED=false
+NEXT_PUBLIC_CHAIN_DISABLED=false
+NEXT_PUBLIC_CHAIN_MODE=real
 ```
 
-Never expose `SUPABASE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, or `GATEWAY_PRIVATE_KEY` to browser code.
+Never expose `SUPABASE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GATEWAY_PRIVATE_KEY`, or model-provider API keys to browser code or commits.
 
-## Demo Flow
+## Project Layout
 
-```mermaid
-sequenceDiagram
-  participant Presenter
-  participant Dashboard
-  participant Phone
-  participant API
-  participant ChainAgent
-  participant Monad
-
-  Presenter->>Dashboard: Start session
-  Dashboard->>Phone: QR join URL
-  Phone->>Phone: Create ephemeral signer
-  Phone->>API: POST signed telemetry
-  API->>Dashboard: Broadcast device.joined
-  Presenter->>Phone: Shake / trigger tamper
-  Phone->>API: POST tamper telemetry
-  API->>Dashboard: Broadcast risk.alert
-  ChainAgent->>API: Read unbatched events from DB
-  ChainAgent->>Monad: commitBatch(merkleRoot)
-  ChainAgent->>Dashboard: Broadcast chain.batch.committed
+```txt
+apps/web                 Next.js frontend, API routes, mobile flow, dashboard, receipts
+packages/shared          protocol schemas, hashing, signatures, Merkle, risk algorithms
+packages/contracts       Solidity evidence ledger
+packages/chain-agent     worker for Merkle batching and Monad submissions
+supabase/migrations      app data, encrypted evidence, journey, delivery schema
+docs                     architecture, protocol, algorithms, runbook, judge Q&A
 ```
 
 ## Documentation
@@ -191,13 +325,15 @@ sequenceDiagram
 - [Private Evidence Protocol](docs/protocol.md)
 - [Algorithms](docs/algorithms.md)
 - [System Decisions](docs/decisions.md)
-- [Judge Q&A](docs/judge-qa.md)
 - [Demo and Deployment Runbook](docs/runbook.md)
 - [Codebase Map](docs/codebase-map.md)
+- [Agentic System](docs/agentic-system.md)
+- [Judge Q&A](docs/judge-qa.md)
 
 ## Current Limits
 
-- Contract tests require Foundry. `forge` was not available in the current local environment.
-- Supabase realtime is optional in local mode; without env vars, the app falls back to in-memory dashboard simulation.
-- Browser battery data is optional by design. GPS and motion also degrade gracefully when unavailable.
-- `pnpm sentinel:launch --prod` checks Vercel login and required env, but still expects first-time Vercel/Supabase/Foundry setup to be completed by the operator.
+- Real Monad verification requires `CHAIN_DISABLED=false`, Monad RPC, a funded gateway key, and deployed `SentinelEvidenceLedger`.
+- Local/cloud simulated mode verifies protocol mechanics but is labeled as simulation and has no explorer links.
+- The current AI narration route is deterministic fallback. Optional LLM agents must use typed tools, structured outputs, and no direct DB/chain mutation.
+- Browser battery, GPS, and motion APIs vary by device and permission state; the app degrades to indoor spatialization and manual shock fallback.
+- Contract tests require Foundry (`forge`).

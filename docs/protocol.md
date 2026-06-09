@@ -1,84 +1,116 @@
 # Private Evidence Protocol
 
-Monad Sentinel does not put raw GPS or condition telemetry on-chain. It uses **private evidence anchoring**:
+The Sentinel protocol turns logistics telemetry into private, tamper-evident evidence.
+
+It is intentionally not:
 
 ```txt
-encrypted off-chain telemetry
-+ device signatures
-+ hash-linked events
-+ Merkle batch roots on Monad
-= private, verifiable, tamper-evident custody evidence
+H(latitude || longitude || timestamp) on-chain
 ```
 
-## What Is Public vs Private
+That leaks too much. GPS and timestamps have a guessable search space. A motivated attacker could test likely routes.
+
+Sentinel instead uses:
+
+```txt
+encrypted payloads
++ random salts
++ device signatures
++ previous-event hashes
++ Merkle batch roots
++ Monad batchRoot verification
+```
+
+## Public / Private Split
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph Private["Encrypted off-chain"]
-    GPS[Exact GPS route]
-    Temp[Temperature and shock]
+    Route[Exact route]
+    GPS[GPS points]
+    Temp[Temperature history]
+    Shock[Shock waveform / motion features]
     Device[Device identity]
     Product[Product and customer identity]
-    Payload[Encrypted payload ciphertext]
   end
 
   subgraph Public["Public on Monad"]
-    Root[Merkle root]
-    Count[Sample count]
-    Risk[Risk flags / commitment]
-    Bucket[Timestamp bucket]
-    Tx[Transaction hash]
+    Shipment[shipmentCommitment]
+    Seq[batchSequence]
+    Root[merkleRoot]
+    Count[event count]
+    Risk[risk commitment / compact flags]
+    Bucket[timestamp bucket]
   end
 
   subgraph Authorized["Authorized dashboard"]
-    Journey[Decrypted journey map]
+    Journey[Full journey map]
     Stops[Stops and dwell time]
-    Timelines[Sensor timelines]
-    Receipt[Selective reveal receipts]
+    Timelines[Condition timelines]
+    Receipts[Selective reveal receipts]
   end
 
-  Private -->|hash commitments| Public
-  Private -->|decrypt with server/customer key| Authorized
-  Public -->|verify root| Receipt
+  Private -->|salted commitments + ciphertext hashes| Public
+  Private -->|authorized decrypt| Authorized
+  Public -->|root verification| Receipts
 ```
 
-## Per-Session Commitments
+## Commitments
 
-The app creates a public shipment commitment and policy commitments. The real session ID and route remain private.
+Per shipment:
 
 ```txt
-shipmentCommitment        = H(shipmentSecret || shipmentId)
-routePolicyCommitment     = H(routeSecret || allowedRouteCells)
-destinationCommitment     = H(destinationSecret || destinationGeofence)
+shipmentCommitment    = H(shipmentSecret || shipmentId)
+routePolicyCommitment = H(routeSecret || allowedRouteCells)
+destinationCommitment = H(destinationSecret || destinationGeofence)
 ```
 
-Current implementation:
+The public chain sees commitments, not names, routes, origins, destinations, products, or customers.
 
-- `apps/web/app/api/sessions/route.ts` creates the session, commitments, demo shipment, and route policy.
-- `sessions.join_token` is stored server-side so the dashboard can render a tokenized QR after validating the dashboard token.
-- `join_token_hash` and `dashboard_token_hash` remain the validation anchors.
+Per device:
 
-## Client Telemetry Signature
+```txt
+devicePrivateKey  = ephemeral local key in demo, hardware key in production
+deviceAddress     = EVM address recovered from signature
+devicePseudonym   = H(shipmentSecret || deviceAddress)
+```
 
-Audience phones do not connect wallets. The mobile page creates an ephemeral local EVM key and signs EIP-712 typed telemetry.
+Phones use ephemeral local keys so audience members do not need wallets, tokens, or asset custody.
+
+## Event Lifecycle
 
 ```mermaid
 sequenceDiagram
-  participant Phone
-  participant API
+  participant Sensor as Phone / IoT sensor
+  participant API as Telemetry API
   participant DB as Supabase
+  participant Batch as Chain Agent
+  participant Monad as SentinelEvidenceLedger
+  participant Receipt as Receipt verifier
 
-  Phone->>Phone: Create/load ephemeral private key
-  Phone->>Phone: canonicalJson(payload)
-  Phone->>Phone: payloadHash = keccak256(canonicalJson)
-  Phone->>Phone: EIP-712 sign(session, device, seq, payloadHash, timestamp)
-  Phone->>API: POST /api/telemetry/batch
-  API->>API: recompute payloadHash
-  API->>API: recover EIP-712 signer
-  API->>DB: write signed/encrypted telemetry row
+  Sensor->>Sensor: Build telemetry payload
+  Sensor->>Sensor: canonicalJson(payload)
+  Sensor->>Sensor: payloadHash = keccak256(canonicalJson)
+  Sensor->>Sensor: EIP-712 sign typed event
+  Sensor->>API: POST /api/telemetry/batch
+  API->>API: Recompute payloadHash
+  API->>API: Recover signer and validate sequence
+  API->>API: Encrypt payload + create commitments
+  API->>DB: Store telemetry_events row
+  Batch->>DB: Read unbatched leaf hashes
+  Batch->>Batch: Build Merkle root + proofs
+  alt real chain mode
+    Batch->>Monad: commitBatch(root)
+  else simulated mode
+    Batch->>DB: Mark simulated; no explorer link
+  end
+  Receipt->>DB: Read event + proof + batch
+  Receipt->>Monad: Read batchRoot when real chain mode
 ```
 
-EIP-712 message:
+## EIP-712 Signature
+
+The phone signs typed data:
 
 ```ts
 Telemetry(
@@ -90,65 +122,91 @@ Telemetry(
 )
 ```
 
-The API rejects payload-hash mismatches and signature-address mismatches.
+Server validation:
+
+1. Validate QR join token.
+2. Recompute canonical payload hash.
+3. Recover EIP-712 signer.
+4. Ensure recovered address matches `deviceAddress`.
+5. Enforce monotonic sequence per device.
+6. Compute private evidence envelope.
+7. Store and broadcast accepted event.
 
 ## Private Evidence Envelope
 
-At ingest, the server builds a private evidence envelope.
+The ingest API produces an envelope with these values:
 
 ```txt
-payloadSalt        = random(32 bytes)
+canonicalPayload   = stable JSON serialization of sensor event
+payloadSalt        = random 32 bytes
 payloadCommitment  = H(payloadSalt || canonicalPayload)
-ciphertext         = AES-GCM-Encrypt(dataKey, canonicalPayload, associatedData)
+ciphertext         = AES-GCM(dataKey, canonicalPayload, associatedData)
 ciphertextHash     = H(ciphertext)
+riskCommitment     = H(payloadSalt || riskScore || riskFlags || class || reason)
 eventHash          = H(domain || shipmentCommitment || devicePseudonym || seq ||
-                       timestamp || payloadCommitment || ciphertextHash || previousEventHash)
-riskCommitment     = H(payloadSalt || riskScore || riskFlags || eventClass || reason)
+                       timestamp || payloadCommitment || ciphertextHash ||
+                       previousEventHash)
 leafHash           = H(eventHash || H(signature) || riskCommitment)
 ```
 
 ```mermaid
 flowchart TB
-  P[Signed telemetry payload] --> PC[Salted payload commitment]
-  P --> ENC[AES-GCM encrypted payload]
-  ENC --> CH[Ciphertext hash]
-  Prev[Previous event hash] --> EH[Event hash]
-  PC --> EH
-  CH --> EH
-  Sig[Device signature] --> Leaf[Private evidence leaf]
-  Risk[Risk commitment] --> Leaf
-  EH --> Leaf
+  Payload[Canonical payload]
+  Salt[Random salt]
+  Cipher[AES-GCM ciphertext]
+  Prev[previousEventHash]
+  Sig[EIP-712 signature]
+  Risk[Risk score + flags]
+
+  Payload --> PayloadCommit[payloadCommitment]
+  Salt --> PayloadCommit
+  Payload --> Cipher
+  Cipher --> CipherHash[ciphertextHash]
+  PayloadCommit --> EventHash[eventHash]
+  CipherHash --> EventHash
+  Prev --> EventHash
+  Risk --> RiskCommit[riskCommitment]
+  EventHash --> Leaf[leafHash]
+  Sig --> Leaf
+  RiskCommit --> Leaf
 ```
 
-Why salted commitments matter: a hash of `lat || lng || timestamp` can be brute-forced against likely routes. A random salt plus ciphertext hash makes the public commitment opaque.
+AES-GCM gives confidentiality and ciphertext integrity. The receipt uses hashes and proofs; authorized users can additionally decrypt the journey.
 
 ## Hash Chain
 
-Each event carries `previousEventHash`. That makes each device journey append-only from the verifier's perspective.
+Each event includes the prior event hash for that device journey.
 
-```txt
-event #10 includes previousEventHash = eventHash #9
-event #11 includes previousEventHash = eventHash #10
+```mermaid
+flowchart LR
+  E1[eventHash #1] --> E2[eventHash #2<br/>previous = #1]
+  E2 --> E3[eventHash #3<br/>previous = #2]
+  E3 --> E4[eventHash #4<br/>previous = #3]
 ```
 
-If an event is modified or inserted later, the chain no longer verifies.
+Editing or inserting a historical event changes every downstream hash. The Merkle root then fails verification.
 
-## Merkle Batching
+## Merkle Batch
 
-The chain agent or serverless emergency endpoint batches private evidence leaves.
+The batcher sorts events deterministically and builds a Merkle tree over `leafHash`.
 
 ```mermaid
 flowchart TB
-  L1[leafHash 1] --> P1[H(L1 || L2)]
-  L2[leafHash 2] --> P1
-  L3[leafHash 3] --> P2[H(L3 || L4)]
-  L4[leafHash 4] --> P2
-  P1 --> Root[Merkle root]
-  P2 --> Root
-  Root --> Contract[SentinelEvidenceLedger.commitBatch]
+  L1[leaf 1] --> P12[H(L1 || L2)]
+  L2[leaf 2] --> P12
+  L3[leaf 3] --> P34[H(L3 || L4)]
+  L4[leaf 4] --> P34
+  P12 --> Root[Merkle root]
+  P34 --> Root
+  Root --> Batch[telemetry_batches.merkle_root]
+  Root --> Contract[commitBatch]
 ```
 
-Monad receives:
+If the number of leaves is odd, the implementation duplicates the last leaf at that level so every level can be paired.
+
+## On-Chain Contract Call
+
+Production call shape:
 
 ```solidity
 commitBatch(
@@ -163,30 +221,71 @@ commitBatch(
 )
 ```
 
-Monad does not receive exact GPS, customer identity, product identity, temperature readings, or device addresses.
+Only the authority that created a shipment can commit batches for that shipment.
 
 ## Receipt Verification
 
-The receipt page verifies the selected event against the batch.
-
 ```mermaid
-flowchart LR
-  Event[Selected encrypted event] --> Leaf[leafHash]
-  Leaf --> Proof[Merkle proof]
-  Proof --> Root[batch merkleRoot]
-  Root --> DB[Supabase batch row]
-  Root --> Chain[contract batchRoot]
-  Sig[Recovered device signer] --> Receipt[Verification checklist]
-  Chain --> Receipt
-  DB --> Receipt
+flowchart TB
+  Event[Selected telemetry event]
+  Leaf[Recompute / read leafHash]
+  Proof[Merkle proof]
+  LocalRoot[Derived root]
+  BatchRoot[DB batch merkle_root]
+  Mode{Real chain mode?}
+  Tx[Fetch tx receipt]
+  Log[Decode BatchCommitted log]
+  Contract[Read contract.batchRoot]
+  Verified[Verified]
+  Simulated[Simulated receipt only]
+  Failed[Failed / pending]
+
+  Event --> Leaf
+  Leaf --> Proof
+  Proof --> LocalRoot
+  LocalRoot --> BatchRoot
+  BatchRoot --> Mode
+  Mode -->|no| Simulated
+  Mode -->|yes| Tx
+  Tx --> Log
+  Log --> Contract
+  Contract --> Verified
+  Contract --> Failed
 ```
 
-Checklist:
+The receipt can show **Verified on Monad** only when all are true:
 
-1. Payload commitment exists for selective reveal.
-2. Ciphertext hash matches the encrypted evidence envelope.
-3. Device signature was recovered at ingest.
-4. Merkle proof derives the batch root.
-5. When `CHAIN_DISABLED=false`, contract `batchRoot(shipmentCommitment, sequence)` equals the receipt root.
+- batch is not marked simulated
+- `CHAIN_DISABLED=false`
+- Monad RPC and contract address are configured
+- tx receipt exists and succeeded
+- decoded `BatchCommitted` event matches DB metadata
+- `batchRoot(shipmentCommitment, sequence)` equals the local Merkle root
 
-In local/cloud demo mode with `CHAIN_DISABLED=true`, the UI says **simulated chain mode** and does not pretend the hash is a real Monad transaction.
+## Simulated Mode Guardrails
+
+Simulated mode is useful for local demos and cloud smoke tests. It is not chain proof.
+
+Rules:
+
+- Batch status is `simulated`.
+- Verification endpoint returns `mode: "simulated"` and `verified: false`.
+- Receipts say **Simulated receipt only**.
+- Explorer links are disabled.
+- The UI must not say **Verified on Monad** for simulated batches.
+
+This keeps the demo honest while still proving the off-chain protocol mechanics.
+
+## Selective Reveal
+
+A verifier does not need the whole route. They can receive:
+
+- selected plaintext payload, when authorized
+- payload salt
+- ciphertext or ciphertext hash
+- device signature metadata
+- Merkle proof
+- batch metadata
+- Monad tx hash and contract root, in real chain mode
+
+The verifier recomputes the selected event proof and checks it against the public root. Unselected GPS points and product details remain private.
