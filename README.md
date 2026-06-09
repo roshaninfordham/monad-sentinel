@@ -67,8 +67,19 @@ These screenshots are kept in [`docs/screenshots`](docs/screenshots) so judges c
 | ![Simulated receipt guardrail](docs/screenshots/06-simulated-proof-receipt-guardrails.png) | Simulated-chain receipt guardrails: no fake explorer link, no fake Monad verification. |
 | ![Selective reveal receipt](docs/screenshots/07-sample-selective-reveal-receipt.png) | Receipt explanation for signature, Merkle proof, and root verification. |
 | ![Device inspector](docs/screenshots/08-device-detail-inspector.png) | Per-witness source-to-destination history, privacy state, incidents, and latest batch proof. |
+| ![Real Monad dashboard](docs/screenshots/09-real-monad-dashboard-verified-batch.png) | Production dashboard showing a real Monad Testnet batch, tx hash, and verified evidence rail. |
+| ![Real Monad receipt](docs/screenshots/10-real-monad-verified-receipt.png) | Verified receipt where payload commitment, ciphertext hash, signature record, Merkle proof, and contract root all pass. |
+| ![Monad Testnet transaction](docs/screenshots/11-real-monad-testnet-transaction.png) | Actual Monad Testnet transaction page showing the successful `commitBatch` transaction to the deployed ledger. |
 
-Real Monad transaction screenshots should be added only after running `pnpm sentinel:launch --prod --real-chain` with a deployed contract, funded gateway wallet, and RPC-verified `BatchCommitted` receipt. Do not fake this screenshot from simulated hashes.
+The real-chain screenshots above were captured after `/api/chain/verify-batch` returned `verified=true` against Monad RPC. The demo session rows are temporary by design, but the on-chain transaction remains independently verifiable.
+
+```txt
+Production app:       https://monad-sentinel.vercel.app
+Monad Testnet ledger: 0xAF28B5Afd7f2CCaF5b65467fca5777330690b9b5
+Verified batch tx:    0xcefd4963426be1069fcff0689f080cde0a0ea4eec2e86fd0a58bdfeb69391576
+Verified block:       37247395
+Batch root:           0x6f715e392f81be4b56870385b9c705899d3be44d7eddd6171ab1e64c4c54a49c
+```
 
 ## System Overview
 

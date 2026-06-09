@@ -188,6 +188,17 @@ receipt contract root matches DB Merkle root
 
 A real transaction screenshot should show the transaction hash, contract address, `BatchCommitted` event, and the receipt page showing root verification. Do not use a simulated batch or fake hash for this. If real chain mode is not configured, the honest screenshot is the simulated receipt guardrail.
 
+Current production proof:
+
+```txt
+Contract: 0xAF28B5Afd7f2CCaF5b65467fca5777330690b9b5
+Tx:       0xcefd4963426be1069fcff0689f080cde0a0ea4eec2e86fd0a58bdfeb69391576
+Block:    37247395
+Root:     0x6f715e392f81be4b56870385b9c705899d3be44d7eddd6171ab1e64c4c54a49c
+```
+
+The app verified this by reading Monad RPC directly. Explorer links are presentation aids; the receipt does not depend on explorer availability.
+
 
 ## Why use phones in the demo?
 

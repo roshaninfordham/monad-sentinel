@@ -282,6 +282,20 @@ NEXT_PUBLIC_CHAIN_MODE=real
 pnpm sentinel:launch --prod --real-chain
 ```
 
+## Current Production Proof
+
+The production deployment is configured for real Monad Testnet evidence anchoring.
+
+```txt
+Production app:       https://monad-sentinel.vercel.app
+Monad Testnet ledger: 0xAF28B5Afd7f2CCaF5b65467fca5777330690b9b5
+Verified batch tx:    0xcefd4963426be1069fcff0689f080cde0a0ea4eec2e86fd0a58bdfeb69391576
+Verified block:       37247395
+Batch root:           0x6f715e392f81be4b56870385b9c705899d3be44d7eddd6171ab1e64c4c54a49c
+```
+
+This proof was accepted only after `/api/chain/verify-batch` checked the tx receipt, decoded the `BatchCommitted` log, read `batchRoot(...)` from the contract, and matched it against the local Merkle root.
+
 ## Chain Agent
 
 Run during demos:

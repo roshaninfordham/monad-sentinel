@@ -14,10 +14,13 @@ Use this folder as the repo-visible product gallery. Screenshots should help a j
 | `06-simulated-proof-receipt-guardrails.png` | Simulated-chain guardrails: no fake explorer link and no fake Monad verification. |
 | `07-sample-selective-reveal-receipt.png` | Receipt anatomy: payload/signature/Merkle/root verification explanation. |
 | `08-device-detail-inspector.png` | Per-witness drilldown with route progress, privacy state, incidents, and latest batch proof. |
+| `09-real-monad-dashboard-verified-batch.png` | Production dashboard with a real Monad Testnet batch and clickable tx link. |
+| `10-real-monad-verified-receipt.png` | Receipt showing internal RPC verification and contract-root match. |
+| `11-real-monad-testnet-transaction.png` | Monad Testnet explorer view of the successful `commitBatch` transaction. |
 
 ## Real Monad Transaction Screenshot
 
-Add a real-chain screenshot only after all of these are true:
+The current real-chain screenshots were captured only after all of these were true:
 
 ```txt
 CHAIN_DISABLED=false
@@ -30,13 +33,15 @@ commitBatch transaction is included
 receipt page shows the contract root matches the local Merkle root
 ```
 
-Recommended filename:
-
 ```txt
-09-real-monad-batch-verified.png
+Production app:       https://monad-sentinel.vercel.app
+Monad Testnet ledger: 0xAF28B5Afd7f2CCaF5b65467fca5777330690b9b5
+Verified batch tx:    0xcefd4963426be1069fcff0689f080cde0a0ea4eec2e86fd0a58bdfeb69391576
+Verified block:       37247395
+Batch root:           0x6f715e392f81be4b56870385b9c705899d3be44d7eddd6171ab1e64c4c54a49c
 ```
 
-The screenshot should show either the verified receipt page, the explorer transaction, or both side-by-side. It must not be generated from simulated tx hashes.
+The screenshot must show either the verified receipt page, the explorer transaction, or both side-by-side. It must not be generated from simulated tx hashes.
 
 ## Capture Checklist
 
