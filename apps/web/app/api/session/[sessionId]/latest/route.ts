@@ -37,7 +37,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ sessionId:
       .limit(25),
     supabase
       .from("telemetry_batches")
-      .select("session_id,sequence,merkle_root,sample_count,max_risk_score,combined_flags,status,tx_hash,submitted_at,committed_at,created_at")
+      .select("session_id,sequence,merkle_root,sample_count,max_risk_score,combined_flags,status,tx_hash,submitted_at,committed_at")
       .eq("session_id", sessionId)
       .order("sequence", { ascending: false })
       .limit(20)
