@@ -10,6 +10,7 @@ import { EvidenceRail } from "@/components/command/EvidenceRail";
 import { IncidentFeed } from "@/components/command/IncidentFeed";
 import { LiveEvidenceLog } from "@/components/command/LiveEvidenceLog";
 import { MetricsRail } from "@/components/command/MetricsRail";
+import { PrivacyShield } from "@/components/command/PrivacyShield";
 import { SessionQRCode } from "@/components/command/SessionQRCode";
 import { SoundToggle } from "@/components/command/SoundToggle";
 import { SwarmVerifiedOverlay } from "@/components/command/SwarmVerifiedOverlay";
@@ -168,6 +169,7 @@ export function DashboardClient({ sessionId }: { sessionId: string }) {
             <SessionQRCode sessionId={sessionId} />
             <div className="dashboard-right-bottom">
               <IncidentFeed />
+              <PrivacyShield />
               <DeviceGrid />
             </div>
           </aside>

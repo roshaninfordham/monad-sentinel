@@ -15,8 +15,9 @@ export function StartSessionButton() {
         body: JSON.stringify({ label: "Live Custody Swarm", mode: "indoor" })
       });
       if (!response.ok) throw new Error("session API failed");
-      const data = (await response.json()) as { session?: { id?: string } };
-      router.push(`/dashboard/${data.session?.id ?? createSessionId()}`);
+      const data = (await response.json()) as { session?: { id?: string }; dashboardToken?: string };
+      const id = data.session?.id ?? createSessionId();
+      router.push(data.dashboardToken ? `/dashboard/${id}?d=${encodeURIComponent(data.dashboardToken)}` : `/dashboard/${id}`);
     } catch {
       router.push(`/dashboard/${createSessionId()}`);
     }

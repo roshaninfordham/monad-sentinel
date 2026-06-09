@@ -34,6 +34,7 @@ type SentinelState = {
   spawnSimulatedDevices: (count: number, sessionId: string) => void;
   triggerRandomTamper: () => Incident | null;
   triggerColdChainBreach: () => Incident | null;
+  triggerScenario: (scenario: "bump" | "mishandling" | "theft") => Incident | null;
   commitBatch: () => EvidenceBatch | null;
   receiveBatch: (batch: EvidenceBatch) => void;
   reset: () => void;
@@ -225,6 +226,58 @@ export const useSentinelStore = create<SentinelState>((set, get) => ({
           riskScore: Math.max(target.riskScore, 76),
           riskFlags: target.riskFlags | 256,
           verification: "Batched"
+        }
+      }
+    }));
+    return incident;
+  },
+
+  triggerScenario: (scenario) => {
+    let devices = Object.values(get().devices);
+    if (!devices.length) {
+      get().spawnSimulatedDevices(1, "scenario-demo");
+      devices = Object.values(get().devices);
+    }
+    const target = devices[Math.floor(Math.random() * devices.length)];
+    const profile = {
+      bump: {
+        riskScore: 28,
+        flags: 1,
+        reason: "Road shock detected. No route deviation, no unauthorized stop, no seal break.",
+        verification: "Signed" as const
+      },
+      mishandling: {
+        riskScore: 58,
+        flags: 1 | 512,
+        reason: "Handling risk detected: repeated shock pattern. Inspect packaging at next checkpoint.",
+        verification: "Batched" as const
+      },
+      theft: {
+        riskScore: 94,
+        flags: 1 | 2 | 1024 | 2048,
+        reason: "Likely theft: shock + route deviation + unauthorized dwell + seal signal.",
+        verification: "Batched" as const
+      }
+    }[scenario];
+    const incident: Incident = {
+      id: crypto.randomUUID(),
+      deviceId: target.id,
+      alias: target.alias,
+      riskScore: profile.riskScore,
+      flags: profile.flags,
+      reason: `${profile.reason} Evidence queued for Monad.`,
+      payloadHash: target.payloadHash,
+      createdAt: Date.now()
+    };
+    set((state) => ({
+      incidents: [incident, ...state.incidents].slice(0, 12),
+      devices: {
+        ...state.devices,
+        [target.id]: {
+          ...target,
+          riskScore: profile.riskScore,
+          riskFlags: profile.flags,
+          verification: profile.verification
         }
       }
     }));

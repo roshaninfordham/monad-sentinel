@@ -37,9 +37,14 @@ export function SensorContent({ sessionId }: { sessionId: string }) {
   const account = useMemo(() => privateKeyToAccount(randomPrivateKey()), []);
   const lastShake = useRef(0);
   const seq = useRef(0);
+  const previousEventHash = useRef<`0x${string}` | undefined>(undefined);
   const latestPosition = useRef<GeolocationPosition | null>(null);
   const latestAccel = useRef({ x: 0, y: 0, z: 9.8 });
   const deviceId = useMemo(() => keccak256(stringToHex(`${sessionId}:${account.address}`)).slice(0, 18), [sessionId, account.address]);
+  const joinToken = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    return new URLSearchParams(window.location.search).get("t") ?? undefined;
+  }, []);
 
   async function sendTelemetry(manualAlert = false) {
     seq.current += 1;
@@ -69,7 +74,8 @@ export function SensorContent({ sessionId }: { sessionId: string }) {
         screenW: window.screen.width,
         screenH: window.screen.height
       },
-      riskFlags: manualAlert ? 128 : 0
+      riskFlags: manualAlert ? 128 : 0,
+      previousEventHash: previousEventHash.current
     };
     const payloadHash = hashPayload(payload);
     const typed = telemetryTypedData({
@@ -80,15 +86,19 @@ export function SensorContent({ sessionId }: { sessionId: string }) {
     });
     const signature = await account.signTypedData(typed);
 
-    await fetch("/api/telemetry/batch", {
+    const response = await fetch("/api/telemetry/batch", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         sessionId,
         deviceAddress: account.address,
-        events: [{ payload, payloadHash, signature, manualAlert }]
+        joinToken,
+        events: [{ payload, payloadHash, signature, joinToken, manualAlert, scenario: manualAlert ? "mishandling" : undefined }]
       })
     }).catch(() => undefined);
+    const body = await response?.json().catch(() => null);
+    const eventHash = body?.accepted?.[0]?.eventHash;
+    if (eventHash) previousEventHash.current = eventHash;
   }
 
   async function join() {
@@ -222,7 +232,8 @@ export function SensorContent({ sessionId }: { sessionId: string }) {
               ))}
             </div>
             <div className="mt-5 rounded-md border border-[rgba(131,110,249,.26)] bg-[rgba(131,110,249,.08)] p-3 text-sm text-[var(--text-secondary)]">
-              GPS: {gpsAccuracy ? `${gpsAccuracy}m accuracy` : "indoor demo spatialization"} · Monad: {batch ? `Verified in batch #${batch}` : tamper ? "Evidence queued" : "Batch pending"}
+              GPS: {gpsAccuracy ? `${gpsAccuracy}m accuracy` : "indoor demo spatialization"} · Evidence: encrypted + signed · Monad:{" "}
+              {batch ? `Verified in batch #${batch}` : tamper ? "Evidence queued" : "Batch pending"}
             </div>
             <button onClick={triggerTamper} className="mt-5 w-full rounded-md bg-[var(--tamper-red)] px-5 py-4 font-semibold text-white">
               Shake to simulate cargo tamper
