@@ -34,14 +34,16 @@ export function DemoControls({ sessionId }: { sessionId: string }) {
   }
 
   async function batch() {
-    const committed = commitBatch();
-    if (committed && soundEnabled) SoundEngine.playBatchCommitted();
     const response = await fetch("/api/chain/emergency-commit", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sessionId })
     }).catch(() => null);
-    if (!response?.ok) return;
+    if (!response?.ok) {
+      const committed = commitBatch();
+      if (committed && soundEnabled) SoundEngine.playBatchCommitted();
+      return;
+    }
     const body = await response.json().catch(() => null);
     if (!body?.batch) return;
     receiveBatch({

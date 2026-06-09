@@ -20,18 +20,52 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function DashboardClient({ sessionId }: { sessionId: string }) {
   const commitBatch = useSentinelStore((state) => state.commitBatch);
+  const receiveBatch = useSentinelStore((state) => state.receiveBatch);
   const soundEnabled = useSentinelStore((state) => state.soundEnabled);
   const deviceCount = useSentinelStore((state) => Object.keys(state.devices).length);
 
   useEffect(() => {
+    let inFlight = false;
     const id = window.setInterval(() => {
+      if (inFlight) return;
       if (Object.keys(useSentinelStore.getState().devices).length > 0) {
-        const batch = commitBatch();
-        if (batch && useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
+        inFlight = true;
+        fetch("/api/chain/emergency-commit", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId })
+        })
+          .then((response) => {
+            if (!response.ok) throw new Error("commit-backend-unavailable");
+            return response.json();
+          })
+          .then((body) => {
+            if (body?.batch) {
+              receiveBatch({
+                sequence: Number(body.batch.sequence),
+                merkleRoot: body.batch.merkleRoot,
+                sampleCount: Number(body.batch.sampleCount),
+                maxRiskScore: Number(body.batch.maxRiskScore),
+                flags: Number(body.batch.combinedFlags ?? 0),
+                txHash: body.batch.txHash,
+                status: "verified",
+                createdAt: Date.now(),
+                simulated: Boolean(body.batch.simulated)
+              });
+              if (useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
+            }
+          })
+          .catch(() => {
+            const batch = commitBatch();
+            if (batch && useSentinelStore.getState().soundEnabled) SoundEngine.playBatchCommitted();
+          })
+          .finally(() => {
+            inFlight = false;
+          });
       }
     }, 2400);
     return () => window.clearInterval(id);
-  }, [commitBatch]);
+  }, [commitBatch, receiveBatch, sessionId]);
 
   useEffect(() => {
     if (soundEnabled && deviceCount) SoundEngine.playVerified();
