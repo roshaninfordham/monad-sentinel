@@ -1,0 +1,112 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+:root {
+  --bg-primary: #05020a;
+  --bg-secondary: #0b0614;
+  --panel-bg: rgba(18, 10, 32, 0.72);
+  --panel-border: rgba(180, 120, 255, 0.22);
+  --monad-purple: #836ef9;
+  --monad-purple-soft: #a98bff;
+  --verified-green: #25f384;
+  --warning-amber: #ffb020;
+  --tamper-red: #ff3b5c;
+  --chain-blue: #4cc9f0;
+  --text-primary: #f4eeff;
+  --text-secondary: #b9a9d6;
+  --muted: #716383;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), Inter, system-ui, sans-serif;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.panel {
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  box-shadow: 0 0 24px rgba(131, 110, 249, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(18px);
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.scanline::after {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.025),
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+  opacity: 0.45;
+}
+
+.hash {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@keyframes grid-pan {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 80px 80px;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+@keyframes tamper-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
