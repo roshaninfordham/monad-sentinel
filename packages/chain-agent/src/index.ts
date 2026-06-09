@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { createPublicClient, createWalletClient, http, parseAbi, stringToHex, keccak256 } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, stringToHex, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { buildMerkleProof, buildMerkleRoot, bytes32FromText, Hex } from "@monad-sentinel/shared";
 
@@ -14,6 +14,8 @@ const rpcUrl = process.env.MONAD_RPC_URL;
 const gatewayPrivateKey = process.env.GATEWAY_PRIVATE_KEY as Hex | undefined;
 
 const abi = parseAbi([
+  "function shipments(bytes32 shipmentCommitment) view returns (address authority,bytes32 routePolicyCommitment,bytes32 destinationCommitment,uint64 createdAt,bool active,bool delivered)",
+  "function createShipment(bytes32 shipmentCommitment,bytes32 routePolicyCommitment,bytes32 destinationCommitment)",
   "function commitBatch(bytes32 shipmentCommitment,uint64 sequence,bytes32 merkleRoot,uint32 sampleCount,uint16 maxRiskScore,uint16 combinedFlags,bytes32 dataAvailabilityHash,uint256 timeBucket)"
 ]);
 
@@ -62,6 +64,8 @@ async function commitToMonad(args: {
   maxRiskScore: number;
   combinedFlags: number;
   shipmentCommitment?: Hex;
+  routePolicyCommitment?: Hex | null;
+  destinationCommitment?: Hex | null;
   dataAvailabilityHash?: Hex;
   timeBucket?: number;
   firstClientTimestampMs: number;
@@ -77,13 +81,34 @@ async function commitToMonad(args: {
   const account = privateKeyToAccount(gatewayPrivateKey);
   const publicClient = createPublicClient({ transport: http(rpcUrl) });
   const walletClient = createWalletClient({ account, transport: http(rpcUrl) });
+  const shipmentCommitment = args.shipmentCommitment ?? bytes32FromText(args.sessionId);
+  const shipment = await publicClient.readContract({
+    address: contractAddress,
+    abi,
+    functionName: "shipments",
+    args: [shipmentCommitment]
+  });
+  if (shipment[0] === zeroAddress) {
+    const createTx = await walletClient.writeContract({
+      chain: null,
+      address: contractAddress,
+      abi,
+      functionName: "createShipment",
+      args: [
+        shipmentCommitment,
+        args.routePolicyCommitment ?? "0x0000000000000000000000000000000000000000000000000000000000000000",
+        args.destinationCommitment ?? "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    });
+    await publicClient.waitForTransactionReceipt({ hash: createTx });
+  }
   const txHash = await walletClient.writeContract({
     chain: null,
     address: contractAddress,
     abi,
     functionName: "commitBatch",
     args: [
-      args.shipmentCommitment ?? bytes32FromText(args.sessionId),
+      shipmentCommitment,
       BigInt(args.sequence),
       args.merkleRoot,
       args.sampleCount,
@@ -114,7 +139,7 @@ async function processSession(supabase: SupabaseAny, sessionId: string) {
   const merkleRoot = buildMerkleRoot(leaves);
   const { data: session } = await supabase
     .from("sessions")
-    .select("shipment_commitment,route_policy_commitment")
+    .select("shipment_commitment,route_policy_commitment,destination_commitment")
     .eq("id", sessionId)
     .single();
   const dataAvailabilityHash = keccak256(
@@ -170,6 +195,8 @@ async function processSession(supabase: SupabaseAny, sessionId: string) {
     maxRiskScore,
     combinedFlags,
     shipmentCommitment: (session?.shipment_commitment as Hex | null) ?? bytes32FromText(sessionId),
+    routePolicyCommitment: session?.route_policy_commitment as Hex | null,
+    destinationCommitment: session?.destination_commitment as Hex | null,
     dataAvailabilityHash,
     timeBucket,
     firstClientTimestampMs,
